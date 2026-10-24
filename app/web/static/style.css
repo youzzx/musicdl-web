@@ -1,0 +1,1606 @@
+/* ============================================================
+   MusicDL · Liquid Glass
+   Apple 风格毛玻璃界面
+   ============================================================ */
+
+:root {
+  --blur: 0px;
+  --brightness: 100%;
+
+  --glass-alpha: 0.4;
+  --glass-bg: rgba(255, 255, 255, var(--glass-alpha));
+  --glass-bg-strong: rgba(255, 255, 255, min(0.95, calc(var(--glass-alpha) + 0.2)));
+  /* 白边 / 高光 跟随 UI 块透明度联动（默认 0.4 时恰为原来的 0.55 / 0.70） */
+  --glass-border: rgba(255, 255, 255, min(0.90, calc(var(--glass-alpha) + 0.15)));
+  --ctrl-border: rgba(255, 255, 255, min(0.90, calc(var(--glass-alpha) + 0.10)));
+  --glass-shadow: 0 8px 40px rgba(0, 0, 0, 0.16);
+  --glass-highlight: rgba(255, 255, 255, min(0.95, calc(var(--glass-alpha) + 0.30)));
+
+  --pop-bg: rgba(252, 252, 254, min(0.92, calc(var(--glass-alpha) + 0.4)));
+  --pop-border: rgba(255, 255, 255, min(0.90, calc(var(--glass-alpha) + 0.25)));
+  --pop-shadow: 0 12px 44px rgba(0, 0, 0, 0.18);
+
+  --text: rgba(20, 20, 24, 0.92);
+  --text-soft: rgba(20, 20, 24, 0.55);
+  --accent: #0a84ff;
+  --accent-soft: rgba(10, 132, 255, 0.14);
+
+  --radius: 24px;
+  --radius-sm: 15px;
+  --spring: cubic-bezier(0.32, 0.72, 0, 1);
+  --spring-soft: cubic-bezier(0.22, 1, 0.36, 1);
+  --spring-pop: cubic-bezier(0.34, 1.42, 0.58, 1);   /* 轻微回弹，避免生硬 */
+  --font: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI",
+    "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  font-family: var(--font);
+  color: var(--text);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+/* ---------- 背景层（可调模糊 + 亮度） ---------- */
+.bg-layer {
+  position: fixed;
+  inset: -60px;
+  z-index: -2;
+  background-image: linear-gradient(165deg, #d9e6f9 0%, #edf2fb 42%, #f6e8ef 100%);
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+  filter: blur(var(--blur)) brightness(var(--brightness));
+  transform: translateZ(0);
+  will-change: filter;
+}
+
+.bg-vignette {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  background: radial-gradient(120% 100% at 50% 0%, transparent 58%, rgba(0, 0, 0, 0.06) 100%);
+  pointer-events: none;
+}
+
+/* ---------- 通用玻璃（Liquid Glass） ---------- */
+.glass {
+  position: relative;
+  background: var(--glass-bg);
+  /* 强折射：高模糊 + 高饱和 + 轻微提亮，让玻璃"吸"住背后的颜色 */
+  backdrop-filter: blur(34px) saturate(200%) brightness(1.06);
+  -webkit-backdrop-filter: blur(34px) saturate(200%) brightness(1.06);
+  border-radius: var(--radius);
+  /* 分层投影 + 顶部镜面高光 + 底部内阴影 = 玻璃厚度感 */
+  box-shadow:
+    0 12px 40px rgba(0, 0, 0, 0.13),
+    0 3px 12px rgba(0, 0, 0, 0.06),
+    inset 0 1px 0 var(--glass-highlight),
+    inset 0 -1px 0 rgba(255, 255, 255, calc(var(--glass-alpha) * 0.45));
+}
+
+/* 边缘渐变镜面（rim light）—— Liquid Glass 的标志性描边，且随 UI 透明度联动 */
+.glass::before,
+.popover::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  padding: 1.2px;
+  background: linear-gradient(
+    150deg,
+    rgba(255, 255, 255, min(0.95, calc(var(--glass-alpha) + 0.45))) 0%,
+    rgba(255, 255, 255, min(0.70, calc(var(--glass-alpha) + 0.15))) 22%,
+    rgba(255, 255, 255, min(0.40, calc(var(--glass-alpha) * 0.55))) 52%,
+    rgba(255, 255, 255, min(0.85, calc(var(--glass-alpha) + 0.32))) 100%
+  );
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  mask-composite: exclude;
+  pointer-events: none;
+}
+
+/* ---------- 卡片标题的呼吸关键帧（炫彩样式见 .search-card h1） ---------- */
+@keyframes titleBreathe {
+  0%, 100% { opacity: 0.68; transform: scale(0.992); }
+  50%      { opacity: 1;    transform: scale(1); }
+}
+
+/* ---------- 按钮 ---------- */
+button {
+  font-family: inherit;
+  border: none;
+  cursor: pointer;
+  transition: transform 0.12s ease, background 0.2s ease, box-shadow 0.2s ease;
+}
+button:active { transform: scale(0.97); }
+
+.glass-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  padding: 9px 15px;
+  border-radius: 12px;
+  background: rgba(255,255,255,0.35);
+  border: 1px solid var(--ctrl-border);
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 600;
+  backdrop-filter: blur(14px) saturate(160%);
+  -webkit-backdrop-filter: blur(14px) saturate(160%);
+}
+.glass-btn:hover { background: rgba(255,255,255,0.5); }
+
+.primary {
+  padding: 12px 22px;
+  border-radius: 13px;
+  background: var(--accent);
+  color: #fff;
+  font-size: 15px;
+  font-weight: 600;
+  box-shadow: 0 4px 16px rgba(10,132,255,0.32);
+}
+.primary:hover { box-shadow: 0 6px 22px rgba(10,132,255,0.42); }
+.primary.small { padding: 9px 16px; font-size: 13.5px; }
+.primary:disabled { opacity: 0.5; cursor: default; }
+
+.mini {
+  padding: 5px 11px;
+  border-radius: 9px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-soft);
+  background: rgba(255,255,255,0.4);
+  border: 1px solid var(--ctrl-border);
+}
+.mini:hover { background: rgba(255,255,255,0.66); color: var(--text); }
+
+.close {
+  background: transparent;
+  color: var(--text-soft);
+  font-size: 16px;
+  width: 30px; height: 30px;
+  border-radius: 50%;
+}
+.close:hover { background: rgba(0,0,0,0.06); color: var(--text); }
+
+.block { width: 100%; }
+
+/* ---------- 背景设置面板 ---------- */
+.panel {
+  position: fixed;
+  right: 18px;
+  bottom: 74px;
+  width: 320px;
+  max-width: calc(100% - 28px);
+  /* 吸底按钮用负边距铺满面板宽度，会在页面盒子里溢出 20px；
+     这里禁掉横向滚动，避免面板内冒出一条横向滚动条 */
+  max-height: calc(100vh - 132px);
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 20px;
+  z-index: 60;
+  transform: translateY(16px) scale(0.96);
+  transform-origin: bottom right;
+  opacity: 0;
+  pointer-events: none;
+  transition: transform 0.3s var(--spring-soft), opacity 0.24s ease;
+}
+.panel.open { transform: translateY(0) scale(1); opacity: 1; pointer-events: auto; }
+/*
+ * 分页切换时玻璃框高度平滑过渡（JS 钉住旧高度后交给这条 transition 滑到新值）。
+ * 动画期间 overflow 裁剪：内容比框高的那一瞬间不会冒出滚动条。
+ * 只持续 200ms，代价是这十几帧里 backdrop-filter 每帧重采样一次 ——
+ * 实测帧间隔全程 ≤17ms（60fps），可接受；动画结束立即交还 auto 高度。
+ */
+.panel.grow {
+  transition: transform 0.3s var(--spring-soft), opacity 0.24s ease,
+              height 0.2s cubic-bezier(0.32, 0.72, 0, 1);
+  overflow: hidden;
+}
+.panel-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; }
+.panel-head h3 { margin: 0; font-size: 16px; font-weight: 650; }
+
+/* ---------- 面板分页切换（iOS 风格分段控件） ---------- */
+/*
+ * 性能要点：面板自身是 backdrop-filter: blur(40px) 的毛玻璃。
+ * 如果让两个按钮各自动画 background / box-shadow（绘制属性），
+ * 每一帧重绘都会迫使浏览器重算整块毛玻璃的模糊 —— 表现为切换时卡顿。
+ * 因此改为：一个独立滑块只做 transform 位移（走合成层，不重绘、不重算模糊），
+ * 按钮本身只切换文字颜色。
+ *
+ * 滑块位置纯用百分比推算（三个等宽 flex:1 按钮）：
+ *   容器左右内边距各 3px、间距 4px×2
+ *   -> 单个按钮宽 = calc((100% - 14px) / 3)
+ * 这样切换时无需读取任何元素尺寸，也就没有强制同步重排。
+ */
+.panel-tabs {
+  position: relative;
+  display: flex;
+  gap: 4px;
+  padding: 3px;
+  margin-bottom: 16px;
+  border-radius: 11px;
+  background: rgba(0, 0, 0, 0.055);
+  isolation: isolate;
+}
+.tab-indicator {
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  height: calc(100% - 6px);
+  width: calc((100% - 14px) / 3);
+  border-radius: 9px;
+  background: rgba(255, 255, 255, 0.94);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.12);
+  transform: translateX(0);
+  /* 与内容交叉淡入同一节奏：0.26s 收尾，比原来 0.34s 的 expo 长尾更跟手 */
+  transition: transform 0.26s cubic-bezier(0.32, 0.72, 0, 1);
+  will-change: transform;
+  pointer-events: none;
+  z-index: 0;
+}
+.tab-indicator.at-1 { transform: translateX(calc(100% + 4px)); }
+.tab-indicator.at-2 { transform: translateX(calc(200% + 8px)); }
+.tab {
+  position: relative;
+  z-index: 1;
+  flex: 1;
+  padding: 7px 8px;
+  border-radius: 9px;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--text-soft);
+  background: transparent;
+  transition: color 0.2s ease;
+}
+.tab:hover { color: var(--text); }
+.tab.active { color: var(--text); }
+/*
+ * 隐藏页直接 display:none —— 面板高度跟随当前分页的内容。
+ * 早先曾把三页叠在同一个网格单元里、用 visibility 隐藏，为的是切页时不改变面板尺寸、
+ * 避免 backdrop-filter 整块重采样；但那会让较短的页（背景 / Cookie）硬被拉到 AI 页的高度，
+ * 底下多出一大块空白，还会冒出一条多余的滚动条 —— 这正是 Cookie 设置页看起来的「布局 bug」。
+ * 实测切页时一次性的重排代价完全可接受（重绘的是玻璃面板自身，不再有二重模糊），
+ * 于是改回自适应高度；切页补一个短促的淡入，衔接高度跳动。
+ */
+/*
+ * 分页切换：交叉淡入。
+ * 旧页 80ms 淡出（.page-leave）→ JS 在它完全透明后才换页 → 新页 150ms 淡入（.page-enter）。
+ * 关键点：
+ *   · 面板高度只在那「内容不可见」的一帧跳变，所以看不出玻璃框猛跳；
+ *   · 只动 opacity，不动 transform/scale —— 祖先有 backdrop-filter: blur(34px)，
+ *     任何缩放都会让文字逐帧重新采样，看起来发虚、发涩；
+ *   · 内容全部是合成层内的透明度变化，不触发重排（sticky 的吸底按钮也不会被带偏）。
+ */
+.panel-page { min-width: 0; }
+.panel-page[hidden] { display: none; }
+.panel-page.page-leave { animation: pageFadeOut 80ms ease-out forwards; }
+.panel-page.page-enter { animation: pageFadeIn 150ms cubic-bezier(.32, .72, 0, 1) both; }
+@keyframes pageFadeOut { from { opacity: 1; } to { opacity: 0; } }
+@keyframes pageFadeIn { from { opacity: 0; } to { opacity: 1; } }
+
+/* 面板内滚动条：默认滚动条的方形轨道会戳出面板的圆角，且轨道有底色显得很脏。
+   这里换成透明轨道的细滚动条，并给轨道留出上下边距避开圆角。 */
+.panel::-webkit-scrollbar { width: 10px; }
+.panel::-webkit-scrollbar-track { background: transparent; margin: 16px 0; }
+.panel::-webkit-scrollbar-thumb {
+  background: rgba(0, 0, 0, 0.16);
+  border: 3px solid transparent;
+  border-radius: 6px;
+  background-clip: content-box;
+}
+.panel::-webkit-scrollbar-thumb:hover { background: rgba(0, 0, 0, 0.28); background-clip: content-box; }
+
+/* 操作按钮吸底：内容再长也始终可见。
+   底下这层是淡淡磨砂，而不是一块发白的色带 —— 和面板本身的玻璃质感统一。 */
+.panel-actions {
+  position: sticky;
+  bottom: -20px;                    /* 抵消 .panel 的下内边距 */
+  margin: 18px -20px -20px;
+  padding: 12px 20px 16px;
+  display: grid;
+  gap: 8px;
+  background: linear-gradient(180deg, rgba(255,255,255,0) 0%, rgba(255,255,255,0.34) 42%, rgba(255,255,255,0.58) 100%);
+  -webkit-backdrop-filter: blur(12px) saturate(160%);
+  backdrop-filter: blur(12px) saturate(160%);
+}
+
+/* 面板里的整行按钮统一规格：同高、同圆角、同字号 —— 两个按钮看起来是一组控件，
+   也不再和搜索框里那个「应用」小按钮混尺寸。
+   主按钮仍是强调色实心（与「搜索」同一套），次按钮保持磨砂玻璃。 */
+.panel .primary.block,
+.panel .glass-btn.block {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 44px;
+  padding: 0 14px;
+  border-radius: 13px;
+  font-size: 13.5px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+}
+.panel .primary.block {
+  background: linear-gradient(180deg, #3d97ff 0%, #0a84ff 100%);
+  box-shadow: 0 4px 14px rgba(10, 132, 255, 0.26);
+}
+.panel .primary.block:hover { box-shadow: 0 6px 18px rgba(10, 132, 255, 0.34); }
+.panel .glass-btn.block {
+  background: rgba(255, 255, 255, 0.55);
+  border: 1px solid rgba(0, 0, 0, 0.06);
+  color: var(--text);
+}
+.panel .glass-btn.block:hover { background: rgba(255, 255, 255, 0.72); }
+/* 吸底区用 grid 间距排版，旧的 margin 叠加去掉 */
+.panel-actions .block.spaced { margin-top: 0; }
+.panel .primary.block:disabled { opacity: 0.6; box-shadow: none; }
+
+/* ---------- 多行输入（Cookie 用） ---------- */
+textarea {
+  width: 100%;
+  padding: 11px 13px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.52);
+  border: 1px solid var(--ctrl-border);
+  border-radius: 12px;
+  outline: none;
+  resize: vertical;
+  min-height: 64px;
+  transition: box-shadow 0.18s ease, border-color 0.18s ease;
+}
+textarea:focus { border-color: var(--accent); box-shadow: 0 0 0 3.5px var(--accent-soft); }
+textarea::placeholder { color: var(--text-soft); }
+
+/* ---------- Cookie 槽位（与「背景设置」保持同一套视觉语言：小号灰标签 + 紧凑排布） ---------- */
+#pageCookie .field { margin-bottom: 14px; }
+.cookie-slots { display: flex; flex-direction: column; gap: 11px; }
+.cookie-slot label {
+  display: block;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--text-soft);          /* 与 .field label 一致，不再用深色粗体 */
+  margin-bottom: 6px;
+  letter-spacing: 0.02em;
+}
+.cookie-slot.filled label::after {
+  content: "已配置";
+  margin-left: 7px;
+  padding: 1px 6px;
+  border-radius: 5px;
+  font-size: 10px;
+  font-weight: 700;
+  color: #0d6a5f;
+  background: rgba(13, 106, 95, 0.12);
+  vertical-align: 1px;
+}
+/* 槽位输入框：去掉 backdrop-filter —— 嵌在玻璃面板里会叠加模糊、发灰 */
+.cookie-slot input[type="text"] {
+  font-size: 13.5px;
+  padding: 10px 13px;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+.slot-why {
+  font-size: 11px;
+  color: var(--text-soft);
+  margin: 4px 0 0;
+  line-height: 1.4;
+  word-break: break-word;
+}
+.slot-tip { color: rgba(20, 20, 24, 0.6); margin-top: 2px; }
+
+/* 夸克 Cookie 覆盖的来源：只读标签，不重复放输入框。
+   一行排完：不换行，标签变窄；万一名字太长就各自省略号收缩，不撑破面板。 */
+.quark-tags { display: flex; flex-wrap: nowrap; gap: 5px; margin-top: 10px; }
+.quark-tag {
+  min-width: 0;
+  padding: 3px 6px;
+  border-radius: 8px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.62);
+  border: 1px solid rgba(0, 0, 0, 0.07);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.quark-tags:empty { display: none; }
+
+.primary.block { width: 100%; }
+.block.spaced { margin-top: 8px; }
+
+/* ---------- AI 翻译页控件 ---------- */
+.ai-field { margin-bottom: 12px; }
+.ai-field label {
+  display: block;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-soft);
+  margin-bottom: 6px;
+  letter-spacing: 0.02em;
+}
+.ai-field input[type="text"],
+.ai-field input[type="password"],
+.ai-field select {
+  width: 100%;
+  padding: 9px 12px;
+  font-size: 13px;
+  font-family: inherit;
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.52);
+  border: 1px solid var(--ctrl-border);
+  border-radius: 10px;
+  outline: none;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  transition: box-shadow 0.18s ease, border-color 0.18s ease;
+}
+.ai-field input:focus,
+.ai-field select:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+/* iOS 风格开关 */
+.switch-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 8px 0;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--text);
+  cursor: pointer;
+}
+input.switch {
+  appearance: none;
+  -webkit-appearance: none;
+  flex: none;
+  width: 40px;
+  height: 23px;
+  margin: 0;
+  border-radius: 12px;
+  background: rgba(0, 0, 0, 0.17);
+  position: relative;
+  cursor: pointer;
+  transition: background 0.22s ease;
+}
+input.switch::after {
+  content: "";
+  position: absolute;
+  top: 2.5px;
+  left: 2.5px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.28);
+  transition: transform 0.24s var(--spring-pop);
+}
+input.switch:checked { background: #0a84ff; }
+input.switch:checked::after { transform: translateX(17px); }
+
+.field { margin-bottom: 18px; }
+.field label, .slider-head label {
+  display: block;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--text-soft);
+  margin-bottom: 7px;
+  letter-spacing: 0.02em;
+}
+.url-row { display: flex; gap: 8px; }
+.hint { font-size: 11.5px; color: var(--text-soft); margin: 7px 0 0; line-height: 1.45; }
+/* 说明文案已去掉：没有状态要显示时整行收起，不占高度、不留空档 */
+.hint:empty { display: none; }
+.slider-head { display: flex; align-items: baseline; justify-content: space-between; }
+.slider-head output { font-size: 12.5px; font-weight: 600; color: var(--accent); font-variant-numeric: tabular-nums; }
+
+/* ---------- 设置面板：分组排版 ---------- */
+/* 每组自带顶部细分隔线，第一组不要线；组标题用小型大写风格字 */
+.pgroup { padding: 16px 0; border-top: 1px solid rgba(0, 0, 0, 0.09); }
+.pgroup:first-child { padding-top: 2px; border-top: none; }
+.pgroup:last-of-type { padding-bottom: 8px; }
+.pgroup-title {
+  margin: 0 0 12px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  color: var(--text-soft);
+}
+.slider-row + .slider-row { margin-top: 16px; }
+.pgroup .hint { margin-top: 9px; }
+/* 底部的重置按钮与上面的设置组拉开距离 */
+.panel-page > .glass-btn.block { margin-top: 4px; }
+
+/* 带清空按钮的输入框 */
+.input-wrap { position: relative; flex: 1; min-width: 0; }
+.input-wrap input[type="text"] { padding-right: 40px; }
+.input-clear {
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  line-height: 1;
+  color: var(--text-soft);
+  background: rgba(0, 0, 0, 0.06);
+}
+.input-clear:hover { background: rgba(0, 0, 0, 0.13); color: var(--text); }
+
+/* 提示文字的状态色 */
+.hint.ok { color: #0d6a5f; }
+.hint.err { color: #a4382f; }
+
+/* ---------- 滑块 ---------- */
+input[type="range"] {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 26px;
+  background: transparent;
+  cursor: pointer;
+}
+input[type="range"]::-webkit-slider-runnable-track {
+  height: 5px;
+  border-radius: 3px;
+  /* 硬切分：已选段实心、未选段轨道色。
+     原来写成 0% → --fill 的渐变，已选段会从蓝渐隐到灰，看起来发虚。 */
+  background: linear-gradient(90deg,
+    var(--accent) 0 var(--fill, 50%),
+    rgba(0, 0, 0, 0.12) var(--fill, 50%) 100%);
+}
+input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 20px; height: 20px;
+  margin-top: -7.5px;
+  border-radius: 50%;
+  background: #fff;
+  border: 1px solid rgba(0,0,0,0.06);
+  box-shadow: 0 2px 8px rgba(0,0,0,0.22);
+  transition: transform 0.16s var(--spring), box-shadow 0.2s ease;
+}
+input[type="range"]:hover::-webkit-slider-thumb { transform: scale(1.08); }
+input[type="range"]:active::-webkit-slider-thumb { transform: scale(1.16); box-shadow: 0 3px 12px rgba(0,0,0,0.28); }
+input[type="range"]::-moz-range-track { height: 5px; border-radius: 3px; background: rgba(0,0,0,0.12); }
+input[type="range"]::-moz-range-progress { height: 5px; border-radius: 3px; background: var(--accent); }
+input[type="range"]::-moz-range-thumb {
+  width: 21px; height: 21px; border-radius: 50%;
+  background: #fff; border: 1px solid rgba(0,0,0,0.06); box-shadow: 0 2px 8px rgba(0,0,0,0.22);
+}
+
+/* ---------- 输入框 ---------- */
+input[type="text"] {
+  width: 100%;
+  padding: 12px 15px;
+  font-size: 15px;
+  font-family: inherit;
+  color: var(--text);
+  background: rgba(255,255,255,0.52);
+  border: 1px solid var(--ctrl-border);
+  border-radius: 13px;
+  outline: none;
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  transition: box-shadow 0.18s ease, border-color 0.18s ease;
+}
+input[type="text"]:focus { border-color: var(--accent); box-shadow: 0 0 0 3.5px var(--accent-soft); }
+input[type="text"]::placeholder { color: var(--text-soft); }
+
+/* ---------- 主内容 ---------- */
+.main {
+  width: min(760px, calc(100% - 28px));
+  margin: 22px auto 100px;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.card { position: relative; padding: 24px; }
+/* 提升搜索卡片的层叠上下文，使其浮层（来源 / 最近搜索）不被下方结果区盖住 */
+.search-card { position: relative; z-index: 20; padding: 16px 20px; }
+.search-card h1 {
+  margin: 0 0 14px;
+  font-size: 20px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  text-align: center;              /* 标题居中 */
+  /* 多色谱渐变文字（红橙黄绿青蓝紫）+ 色带流动 + 明暗呼吸 */
+  background: linear-gradient(90deg,
+    #ff3b30, #ff9500, #ffcc00, #30d158, #00c7be, #0a84ff, #bf5af2, #ff3b30);
+  background-size: 200% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: barFlow 8s linear infinite, titleBreathe 3.4s ease-in-out infinite;
+}
+
+/* 站点看板娘 + 标题 横排居中 */
+.brand { display: flex; align-items: center; justify-content: center; gap: 12px; margin-bottom: 14px; }
+.brand h1 { margin: 0; }
+.logo {
+  width: 42px;
+  height: 42px;
+  border-radius: 13px;
+  box-shadow: 0 4px 14px rgba(167, 139, 250, 0.4);
+  transition: transform 0.3s var(--spring-soft);
+}
+.logo:hover { transform: scale(1.08) rotate(-3deg); }
+
+/* ---------- 搜索栏（含历史） ---------- */
+.search-row { display: flex; gap: 10px; }
+.search-input-wrap { position: relative; flex: 1; }
+.search-icon {
+  position: absolute;
+  left: 13px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--text-soft);
+  pointer-events: none;
+}
+.search-input-wrap input[type="text"] { padding-left: 38px; }
+
+/* ---------- 通用 popover ---------- */
+.popover {
+  position: absolute;
+  z-index: 50;
+  background: var(--pop-bg);
+  backdrop-filter: blur(40px) saturate(210%) brightness(1.06);
+  -webkit-backdrop-filter: blur(40px) saturate(210%) brightness(1.06);
+  border-radius: 18px;
+  box-shadow:
+    0 18px 50px rgba(0, 0, 0, 0.18),
+    0 4px 14px rgba(0, 0, 0, 0.07),
+    inset 0 1px 0 rgba(255, 255, 255, min(0.95, calc(var(--glass-alpha) + 0.45)));
+  opacity: 0;
+  visibility: hidden;
+  transform: translateY(-6px) scale(0.98);
+  transition: opacity 0.18s ease, transform 0.24s var(--spring), visibility 0.18s;
+}
+.popover.open {
+  opacity: 1;
+  visibility: visible;
+  transform: translateY(0) scale(1);
+}
+
+/* 历史 popover */
+.history-pop {
+  top: calc(100% + 8px);
+  left: 0;
+  right: 0;
+  transform-origin: top center;
+  padding: 8px;
+  max-height: 320px;
+  overflow-y: auto;
+}
+.pop-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 8px 8px;
+  font-size: 12.5px;
+  font-weight: 650;
+  color: var(--text-soft);
+}
+.history-list { list-style: none; margin: 0; padding: 0; }
+.history-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 11px;
+  border-radius: 10px;
+  font-size: 14px;
+  cursor: pointer;
+  transition: background 0.13s ease;
+}
+.history-item:hover { background: rgba(0, 0, 0, 0.05); }
+.history-item .clock { color: var(--text-soft); flex-shrink: 0; }
+.history-item .kw { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.history-item .del {
+  flex-shrink: 0;
+  width: 22px; height: 22px;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--text-soft);
+  font-size: 14px;
+  line-height: 1;
+  display: none;
+  align-items: center;
+  justify-content: center;
+}
+.history-item:hover .del { display: inline-flex; }
+.history-item .del:hover { background: rgba(0,0,0,0.08); color: var(--text); }
+.history-empty { padding: 16px; text-align: center; font-size: 13px; color: var(--text-soft); }
+
+/* ---------- 来源选择器 ---------- */
+.source-picker { position: relative; margin-top: 14px; }
+
+.source-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 13px;
+  border-radius: 11px;
+  background: rgba(255,255,255,0.42);
+  border: 1px solid var(--ctrl-border);
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 600;
+  backdrop-filter: blur(14px) saturate(160%);
+  -webkit-backdrop-filter: blur(14px) saturate(160%);
+}
+.source-trigger:hover { background: rgba(255,255,255,0.56); }
+.source-trigger-label { color: var(--text-soft); font-weight: 500; }
+.source-badge {
+  min-width: 20px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: var(--accent);
+  color: #fff;
+  font-size: 11.5px;
+  font-weight: 650;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+.chevron { transition: transform 0.25s var(--spring); }
+.source-trigger.open .chevron { transform: rotate(180deg); }
+
+.source-popover {
+  top: calc(100% + 8px);
+  left: 0;
+  width: min(320px, 100%);
+  transform-origin: top left;
+  padding: 10px;
+}
+
+.sources-filter {
+  margin-bottom: 8px;
+  padding: 9px 13px;
+  font-size: 13.5px;
+  border-radius: 11px;
+}
+
+.source-list {
+  max-height: 300px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  border-radius: 12px;
+  background: rgba(0, 0, 0, 0.035);
+  padding: 4px;
+}
+.source-list::-webkit-scrollbar { width: 8px; }
+.source-list::-webkit-scrollbar-track { background: transparent; }
+.source-list::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.16); border-radius: 4px; }
+
+.source-item {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 7px 9px;
+  border-radius: 8px;
+  font-size: 13.5px;
+  cursor: pointer;
+  user-select: none;
+  transition: background 0.13s ease;
+}
+.source-item:hover { background: rgba(255,255,255,0.55); }
+.source-item.active { background: var(--accent-soft); }
+.source-item.active .source-name { font-weight: 600; color: var(--text); }
+
+.source-item input[type="checkbox"] {
+  -webkit-appearance: none;
+  appearance: none;
+  flex-shrink: 0;
+  width: 16px; height: 16px;
+  margin: 0;
+  border-radius: 5px;
+  border: 1.6px solid rgba(0,0,0,0.22);
+  background: rgba(255,255,255,0.7);
+  cursor: pointer;
+  transition: background-color 0.15s ease, border-color 0.15s ease;
+}
+.source-item input[type="checkbox"]:checked {
+  background-color: var(--accent);
+  border-color: var(--accent);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='%23ffffff' stroke-width='2.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M3.6 8.6l2.8 2.8 6.2-7.2'/%3E%3C/svg%3E");
+  background-size: 10.5px;
+  background-position: center;
+  background-repeat: no-repeat;
+}
+.source-name { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.source-hint {
+  flex-shrink: 0;
+  font-size: 11.5px;
+  font-weight: 500;
+  color: rgba(20, 20, 24, 0.6);
+  background: rgba(0, 0, 0, 0.05);
+  padding: 2px 7px;
+  border-radius: 999px;
+}
+.source-item.disabled { cursor: not-allowed; opacity: 0.45; }
+.source-item.disabled:hover { background: transparent; }
+.source-item.disabled input[type="checkbox"] { cursor: not-allowed; }
+.source-empty { padding: 18px; text-align: center; font-size: 13px; color: var(--text-soft); }
+
+.source-foot {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid rgba(0,0,0,0.06);
+}
+.sources-count {
+  margin-left: auto;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-soft);   /* 中性色，不用蓝色 */
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---------- 结果卡片（紧凑） ---------- */
+.results { display: flex; flex-direction: column; gap: 10px; }
+.result {
+  padding: 11px 15px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  border-radius: 16px;
+  transition: transform 0.14s ease, background 0.14s ease;
+}
+.result:hover { transform: translateY(-1px); background: var(--glass-bg-strong); }
+/* 结果图标：优先显示专辑封面，缺失或加载失败时退回音符图标 */
+.result .result-art {
+  width: 42px; height: 42px;
+  flex-shrink: 0;
+  border-radius: 10px;
+  overflow: hidden;
+  background: rgba(120, 120, 128, 0.15);
+  border: 1px solid rgba(255, 255, 255, 0.5);
+  display: flex; align-items: center; justify-content: center;
+  color: rgba(20, 20, 24, 0.62);   /* 中性色，避免蓝色刺眼 */
+}
+.result-art-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+  opacity: 0;
+  transition: opacity 0.32s ease;   /* 加载完成再淡入，避免闪白 */
+}
+.result-art-img.loaded { opacity: 1; }
+.result .result-main { flex: 1; min-width: 0; }
+.result .result-title {
+  font-size: 15px;
+  font-weight: 650;
+  letter-spacing: 0.005em;
+  line-height: 1.35;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+/* 歌手：比曲名小一档、对比略低以保持层级，但必须清楚（原 0.52/13.5px 偏淡） */
+.result .result-title .result-artist {
+  font-size: 14px;
+  font-weight: 500;
+  color: rgba(20, 20, 24, 0.66);
+  margin-left: 8px;
+}
+.result .result-title .result-artist::before {
+  content: "·";
+  margin-right: 8px;
+  opacity: 0.6;
+  font-weight: 700;
+}
+.result .result-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 5px;
+  min-width: 0;
+  font-size: 12.8px;
+  color: rgba(20, 20, 24, 0.6);
+  overflow: hidden;
+}
+/* 来源：这一行的「标签」，字号 / 字重 / 对比都提上来（仍是中性灰，不用蓝） */
+.result .result-meta .meta-source {
+  flex-shrink: 0;
+  font-size: 13px;
+  font-weight: 650;
+  color: rgba(20, 20, 24, 0.78);
+  letter-spacing: 0.01em;
+}
+/* 专辑：用于区分同名不同版本（独立日 / 创作自选集…），窄屏优先收缩 */
+.result .result-meta .meta-album {
+  min-width: 0;
+  flex-shrink: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* 时长 */
+.result .result-meta .meta-duration {
+  flex-shrink: 0;
+  font-variant-numeric: tabular-nums;
+}
+/* 文本项之间的分隔点 */
+.result .result-meta .meta-album::before,
+.result .result-meta .meta-duration::before,
+.result .result-meta .meta-size::before {
+  content: "·";
+  margin-right: 8px;
+  opacity: 0.55;
+}
+/* 类型徽章：提高类型可读性 */
+.result .result-meta .meta-ext {
+  flex-shrink: 0;
+  padding: 1.5px 6px;
+  border-radius: 5px;
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: var(--text);
+  background: rgba(120, 120, 128, 0.17);
+}
+/* 无损格式（FLAC/WAV/ALAC…）：低饱和青绿，温和区分（不用刺眼的蓝） */
+.result .result-meta .meta-ext.lossless {
+  color: #0d6a5f;
+  background: rgba(45, 165, 148, 0.18);
+  box-shadow: inset 0 0 0 1px rgba(45, 165, 148, 0.32);
+}
+/* 文件大小：等宽数字 + 更高对比度 */
+.result .result-meta .meta-size {
+  flex-shrink: 0;
+  font-weight: 600;
+  color: var(--text);
+  opacity: 0.7;
+  font-variant-numeric: tabular-nums;
+}
+.result .dl {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 7px 14px;
+  border-radius: 9px;
+  font-size: 12.5px;
+  font-weight: 600;
+  flex-shrink: 0;
+}
+/* 下载按钮内的圆环进度。r=15.9155 => 周长 2πr ≈ 100，所以 dasharray 直接用 100 */
+.dl-ring { display: none; width: 20px; height: 20px; transform: rotate(-90deg); }
+.dl-ring-bg { fill: none; stroke: rgba(0, 0, 0, 0.14); stroke-width: 3.6; }
+.dl-ring-fg {
+  fill: none;
+  stroke: #ec4899;                 /* 玫红，与搜索进度条的紫罗兰区分 */
+  stroke-width: 3.6;
+  stroke-linecap: round;
+  stroke-dasharray: 100;
+  stroke-dashoffset: 100;
+  transition: stroke-dashoffset 0.28s ease;
+}
+/* 只换内容、不改按钮尺寸，避免下载时整行回流 */
+.result .dl.downloading { cursor: progress; }
+.result .dl.downloading .btn-text { display: none; }
+.result .dl.downloading .dl-ring { display: block; }
+
+.empty {
+  text-align: center;
+  padding: 54px 20px;
+  color: var(--text-soft);
+  font-size: 14.5px;
+}
+.empty .big { font-size: 38px; margin-bottom: 10px; opacity: 0.7; }
+
+/* ---------- 左下角悬浮坞（播放器在上，状态在下） ---------- */
+/* 关键：圆尺寸恒定 + 面板绝对定位（不参与布局），所以悬停展开不会改变任何玻璃元素的尺寸，
+   backdrop 模糊区域无需逐帧重算 —— 这是之前动画卡顿的根因（动画 max-width 触发回流 + 重算模糊）。 */
+.dock {
+  position: fixed;
+  left: 18px;
+  bottom: 16px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 10px;
+  z-index: 70;
+}
+/* display:flex 很关键：若用默认的 block，里面的圆（inline-flex）会产生行盒，
+   使 .dock-item 比圆更高，面板的 top:50% 就会偏心 —— 这正是之前状态栏/播放栏的 UI bug。 */
+.dock-item { position: relative; display: flex; align-items: center; }
+
+/* 播放栏 / 下载栏的「出现 / 消失」：
+   原来用 display:none → flex，而 display 不可动画，所以是凭空瞬移；
+   而且播放栏一出现，下载栏会立刻下移 44px，同样是硬跳。
+   现在改为高度 0 → 34px（下方条目随之平滑位移）+ 淡入 + 缩放。 */
+.dock-item.dl,
+.dock-item.player {
+  height: 0;
+  margin-bottom: -10px;              /* 抵消 .dock 的 gap，收起时不留空白 */
+  opacity: 0;
+  transform: scale(0.72);
+  pointer-events: none;
+  transition: height 0.5s var(--spring-pop),
+              margin-bottom 0.5s var(--spring-pop),
+              opacity 0.36s cubic-bezier(0.4, 0, 0.2, 1),
+              transform 0.5s var(--spring-pop);
+}
+.dock-item.dl.show,
+.dock-item.player.show {
+  height: 34px;
+  margin-bottom: 0;
+  opacity: 1;
+  transform: none;
+  pointer-events: auto;
+}
+
+.dock-circle {
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text);
+  cursor: default;
+}
+button.dock-circle {
+  cursor: pointer;
+  /* 按下迅速(0.13s)、松开带回弹(0.42s) —— 手感自然，不像原来 0.12s 硬切 */
+  transition: transform 0.42s var(--spring-pop), background 0.22s ease;
+}
+button.dock-circle:active {
+  transform: scale(0.9);
+  transition: transform 0.13s ease-out, background 0.22s ease;
+}
+
+/* 展开面板：绝对定位，悬停/收起都不触发回流 */
+.dock-panel {
+  position: absolute;
+  left: 44px;
+  top: 50%;
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  padding: 9px 13px;
+  border-radius: 15px;
+  white-space: nowrap;
+  max-width: calc(100vw - 76px);   /* 防止窄屏时面板溢出屏幕右侧 */
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(-50%) translateX(-10px) scale(0.93);
+  transform-origin: left center;
+  /* opacity 与 transform 时长拉近，避免两者脱节产生的顿挫感 */
+  transition: opacity 0.3s cubic-bezier(0.4, 0, 0.2, 1),
+              transform 0.46s var(--spring-pop);
+}
+/* 状态栏是悬停展开，所以需要一层透明热区桥接「圆 → 面板」之间的空隙，
+   否则鼠标移向面板的途中会丢失 :hover、面板提前收起。
+   播放器改为点击展开（面板常驻），不需要这层热区 —— 它反而会挡住圆的点击。 */
+/* 注意这里必须用 ::after —— ::before 已被 .glass 的 rim light 占用。
+   若桥接热区也用 ::before，两条规则会合并：它会继承 rim 的渐变背景与 mask，
+   于是在圆和面板之间渲染出一个「竖着的透明椭圆」细边框。 */
+.dock-item.status .dock-panel::after {
+  content: "";
+  position: absolute;
+  left: -16px;
+  top: -8px;
+  bottom: -8px;
+  width: 16px;
+}
+
+/* 状态栏：悬停展开。鼠标一离开就收起，点击也不会钉住
+   （用 :focus-visible / :has(:focus-visible) 而非 :focus-within） */
+.dock-item.status:hover .dock-panel,
+.dock-item.status:focus-visible .dock-panel,
+.dock-item.status:has(:focus-visible) .dock-panel,
+/* 播放器：点击展开（.open），拖动进度期间也不收起 */
+.dock-item.player.open .dock-panel,
+.dock-item.player.seeking .dock-panel {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateY(-50%) translateX(0) scale(1);
+}
+
+/* 播放器圆内的图标：默认音符 → 悬停变 ">" → 展开变 "<"。
+   两个图标叠在同一位置，用 opacity + transform 交叉过渡，而不是 display 硬切换。 */
+.dock-item.player .dock-circle { position: relative; }
+.player-idle,
+.player-chev {
+  position: absolute;
+  inset: 0;
+  margin: auto;
+  /* 缩放从 0.4 收到 0.74、旋转从 60° 收到 28°，并换成带轻微回弹的曲线 */
+  transition: opacity 0.34s cubic-bezier(0.4, 0, 0.2, 1),
+              transform 0.5s var(--spring-pop);
+  will-change: opacity, transform;
+}
+.player-idle { color: rgba(20, 20, 24, 0.55); opacity: 1; transform: scale(1) rotate(0deg); }
+.player-chev { opacity: 0; transform: scale(0.74) rotate(-28deg); }
+
+/* 音符旋转缩小淡出，箭头旋转摆正淡入 */
+.dock-item.player:hover .player-idle,
+.dock-item.player.open .player-idle {
+  opacity: 0;
+  transform: scale(0.74) rotate(28deg);
+}
+.dock-item.player:hover .player-chev,
+.dock-item.player.open .player-chev {
+  opacity: 1;
+  transform: scale(1) rotate(0deg);
+}
+/* 展开时箭头指向左 "<" */
+.dock-item.player.open .player-chev { transform: scale(1) rotate(180deg); }
+
+.dot {
+  position: relative;
+  flex-shrink: 0;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #34c759;
+}
+/* 绿色呼吸灯：光晕用 ::after 缩放淡出，不占用 box-shadow，
+   这样告警色（橙 / 红）只需换颜色即可。 */
+.dot::after {
+  content: "";
+  position: absolute;
+  inset: -1px;
+  border-radius: 50%;
+  background: rgba(52, 199, 89, 0.5);
+  animation: breathe 2.6s ease-in-out infinite;
+}
+.dot.warn { background: #ff9500; }
+.dot.warn::after { background: rgba(255, 149, 0, 0.5); }
+.dot.err { background: #ff3b30; }
+.dot.err::after { background: rgba(255, 59, 48, 0.5); }
+
+@keyframes breathe {
+  0%, 100% { transform: scale(1); opacity: 0.5; }
+  50%      { transform: scale(2); opacity: 0; }
+}
+
+/* 右下角齿轮 */
+.gear {
+  position: fixed;
+  right: 18px;
+  bottom: 16px;
+  z-index: 70;
+  width: 44px; height: 44px;
+  padding: 0;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text);
+  transition: transform 0.32s var(--spring), background 0.2s ease;
+}
+.gear:hover { transform: rotate(65deg); background: var(--glass-bg-strong); }
+.gear:active { transform: rotate(65deg) scale(0.94); }
+
+/* ---------- 搜索过程控制台（可收缩） ---------- */
+.console-card { padding: 0; overflow: hidden; }
+
+.console-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 11px 16px 8px;
+  cursor: pointer;
+  user-select: none;
+  transition: background 0.15s ease;
+}
+.console-head:hover { background: rgba(255, 255, 255, 0.28); }
+.console-head:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.console-icon { flex-shrink: 0; color: var(--text-soft); }
+/* 下载过程用圆环表示进度（复用 .dl-ring-bg / .dl-ring-fg 的描边样式） */
+.console-ring { flex-shrink: 0; width: 18px; height: 18px; transform: rotate(-90deg); }
+.console-title { font-size: 13px; font-weight: 650; }
+.console-status { font-size: 11.5px; font-weight: 500; color: var(--text-soft); }
+.console-chevron {
+  margin-left: auto;
+  flex-shrink: 0;
+  color: var(--text-soft);
+  transition: transform 0.25s var(--spring);
+}
+.console-card.collapsed .console-chevron { transform: rotate(-90deg); }
+.console-card.collapsed .console-body { display: none; }
+
+/* 进度条：已完成来源 / 总来源（并发搜索下唯一真实的进度指标）
+   与播放进度条统一：4px 高、同色轨道、胶囊圆角、同款渐变填充 */
+.console-progress {
+  height: 4px;
+  margin: 0 16px 12px;
+  border-radius: 999px;
+  background: rgba(120, 120, 128, 0.18);
+  overflow: hidden;
+}
+.console-bar {
+  height: 100%;
+  width: 0%;
+  border-radius: 999px;
+  /* 紫罗兰色带 + 横向流动 */
+  background: linear-gradient(90deg, #a78bfa, #8b5cf6, #7c3aed, #a78bfa);
+  background-size: 200% 100%;
+  animation: barFlow 4.5s linear infinite;
+  transition: width 0.4s var(--spring-soft);
+}
+/* 色带横向流动。首尾同色 + 位移正好一个渐变宽度 => 无缝循环 */
+@keyframes barFlow {
+  0%   { background-position: 0% 50%; }
+  100% { background-position: 200% 50%; }
+}
+
+.console-body {
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+  font-size: 11.5px;
+  line-height: 1.7;
+  max-height: 236px;
+  overflow-y: auto;
+  padding: 0 16px 14px;
+}
+.console-body::-webkit-scrollbar { width: 8px; }
+.console-body::-webkit-scrollbar-track { background: transparent; }
+.console-body::-webkit-scrollbar-thumb { background: rgba(0, 0, 0, 0.16); border-radius: 4px; }
+
+.log-line { white-space: pre-wrap; word-break: break-word; color: var(--text-soft); }
+.log-line .t { margin-right: 7px; color: rgba(20, 20, 24, 0.32); font-variant-numeric: tabular-nums; }
+.log-line.head { color: var(--text); font-weight: 650; }
+.log-line.ok { color: #0d6a5f; }
+.log-line.err { color: #a4382f; }
+.log-line.dim { color: var(--text-soft); opacity: 0.82; }
+
+/* ---------- 在线试听（坞内播放器） ---------- */
+/* 播放/暂停键放在面板里（坞里的圆已改成「展开 / 收起」开关） */
+.panel-play {
+  width: 28px;
+  height: 28px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.5);
+  border: 1px solid var(--ctrl-border);
+}
+.panel-play:hover { background: rgba(255, 255, 255, 0.78); }
+/* 播放/暂停图标同样交叉过渡，避免硬闪 */
+.panel-play { position: relative; }
+.panel-play svg {
+  position: absolute;
+  inset: 0;
+  margin: auto;
+  transition: opacity 0.2s ease, transform 0.34s var(--spring);
+}
+.panel-play .ico-play { opacity: 1; transform: scale(1) rotate(0deg); }
+.panel-play .ico-pause { opacity: 0; transform: scale(0.55) rotate(-25deg); }
+.dock-item.player.playing .panel-play .ico-play { opacity: 0; transform: scale(0.55) rotate(25deg); }
+.dock-item.player.playing .panel-play .ico-pause { opacity: 1; transform: scale(1) rotate(0deg); }
+
+/* 歌曲信息：曲名与歌手分行，提高可读性 */
+.panel-songs { min-width: 0; }
+.panel-name {
+  font-size: 13px;
+  font-weight: 650;
+  letter-spacing: 0.01em;
+  max-width: 210px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.panel-artist {
+  font-size: 12px;
+  font-weight: 500;
+  color: rgba(20, 20, 24, 0.62);
+  margin-top: 2px;
+  max-width: 210px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* 进度条：4px 视觉高度 + 上下各 9px 隐形热区，便于拖动 */
+.panel-track {
+  position: relative;
+  width: 150px;
+  min-width: 64px;
+  height: 4px;
+  flex-shrink: 1;
+  border-radius: 999px;
+  background: rgba(120, 120, 128, 0.18);
+  cursor: pointer;
+  touch-action: none;
+}
+.panel-track::before { content: ""; position: absolute; inset: -9px 0; }
+.panel-track:focus-visible { outline: 2px solid var(--accent); outline-offset: 4px; }
+.panel-fill {
+  position: relative;
+  height: 100%;
+  width: 0%;
+  border-radius: 999px;
+  /* 冷色炫彩（天蓝 → 蓝 → 靛，不含绿），与搜索条的暖色带区分 */
+  background: linear-gradient(90deg, #66b3ff, #0a84ff, #5e5ce6, #66b3ff);
+  background-size: 200% 100%;
+  animation: barFlow 6.5s linear infinite reverse;
+  pointer-events: none;
+}
+/* 拖动把手：圆点让进度条有可抓的地方 */
+.panel-fill::after {
+  content: "";
+  position: absolute;
+  right: -5.5px;
+  top: 50%;
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.32);
+  transform: translateY(-50%);
+  transition: transform 0.16s var(--spring);
+  pointer-events: none;
+}
+.panel-track:hover .panel-fill::after,
+.dock-item.player.seeking .panel-fill::after { transform: translateY(-50%) scale(1.2); }
+
+.panel-time {
+  flex-shrink: 0;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text-soft);
+  font-variant-numeric: tabular-nums;
+}
+/* 音量：喇叭图标（三态交叉过渡）+ 细滑杆，视觉沿用播放条的 4px 轨道 */
+.panel-vol {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+.panel-vol-btn {
+  position: relative;
+  width: 22px;
+  height: 22px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  color: var(--text-soft);
+}
+.panel-vol-btn:hover { background: rgba(0, 0, 0, 0.07); color: var(--text); }
+.panel-vol-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+/* 三个图标叠在同一格，靠 opacity/scale 切换，和播放/暂停键同一套手感 */
+.vol-ico {
+  position: absolute;
+  inset: 0;
+  margin: auto;
+  transition: opacity 0.18s ease, transform 0.3s var(--spring);
+}
+.vol-high { opacity: 1; transform: scale(1); }
+.vol-low, .vol-mute { opacity: 0; transform: scale(0.6); }
+.panel-vol-btn.low .vol-high { opacity: 0; transform: scale(0.6); }
+.panel-vol-btn.low .vol-low { opacity: 1; transform: scale(1); }
+.panel-vol-btn.muted .vol-high { opacity: 0; transform: scale(0.6); }
+.panel-vol-btn.muted .vol-mute { opacity: 1; transform: scale(1); }
+/* 用 .panel-vol 前缀提高优先级，压过全局的 input[type="range"]（26px 高、20px 拇指） */
+.panel-vol input[type="range"] {
+  width: 64px;
+  height: 20px;
+  flex: none;
+}
+.panel-vol input[type="range"]::-webkit-slider-runnable-track {
+  height: 4px;
+  border-radius: 999px;
+  background: linear-gradient(90deg,
+    var(--accent) 0 var(--fill, 70%),
+    rgba(120, 120, 128, 0.22) var(--fill, 70%) 100%);
+}
+.panel-vol input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 11px;
+  height: 11px;
+  margin-top: -3.5px;                 /* (4 - 11) / 2 */
+  border-radius: 50%;
+  background: #fff;
+  border: 1px solid rgba(0, 0, 0, 0.06);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.28);
+  transition: transform 0.16s var(--spring);
+}
+.panel-vol input[type="range"]:hover::-webkit-slider-thumb { transform: scale(1.12); }
+.panel-vol input[type="range"]:active::-webkit-slider-thumb { transform: scale(1.24); }
+.panel-vol input[type="range"]::-moz-range-track {
+  height: 4px;
+  border-radius: 999px;
+  background: rgba(120, 120, 128, 0.22);
+}
+.panel-vol input[type="range"]::-moz-range-progress {
+  height: 4px;
+  border-radius: 999px;
+  background: var(--accent);
+}
+.panel-vol input[type="range"]::-moz-range-thumb {
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  background: #fff;
+  border: 1px solid rgba(0, 0, 0, 0.06);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.28);
+}
+.panel-vol input[type="range"]:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+  border-radius: 999px;
+}
+
+.panel-close {
+  width: 24px;
+  height: 24px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--text-soft);
+  font-size: 12px;
+  line-height: 1;
+}
+.panel-close:hover { background: rgba(0, 0, 0, 0.07); color: var(--text); }
+
+.panel-status { font-size: 13px; font-weight: 500; }
+
+/* ---------- 下载详情（坞内，收起是圆 → 悬停 ">" → 点击展开 "<"） ---------- */
+/* 出现/消失在 .dock-item.dl / .player 的公共规则里统一处理 */
+
+/* 圆内图标：下载图标 → 悬停 ">" → 展开 "<"（与播放栏同一套过渡） */
+.dock-item.dl .dock-circle { position: relative; }
+.dl-idle, .dl-chev {
+  position: absolute;
+  inset: 0;
+  margin: auto;
+  transition: opacity 0.34s cubic-bezier(0.4, 0, 0.2, 1),
+              transform 0.5s var(--spring-pop);
+  will-change: opacity, transform;
+}
+.dl-idle { color: rgba(20, 20, 24, 0.6); opacity: 1; transform: scale(1) rotate(0deg); }
+.dl-chev { opacity: 0; transform: scale(0.74) rotate(-28deg); }
+.dock-item.dl:hover .dl-idle,
+.dock-item.dl.open .dl-idle { opacity: 0; transform: scale(0.74) rotate(28deg); }
+.dock-item.dl:hover .dl-chev,
+.dock-item.dl.open .dl-chev { opacity: 1; transform: scale(1) rotate(0deg); }
+.dock-item.dl.open .dl-chev { transform: scale(1) rotate(180deg); }
+
+/* 面板向上生长（它在坞的最上方），避免压住下方的播放栏 / 状态栏 */
+.dock-item.dl .dock-panel {
+  top: auto;
+  bottom: -2px;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
+  width: min(340px, calc(100vw - 92px));
+  white-space: normal;
+  transform-origin: left bottom;
+  transform: translateX(-10px) scale(0.94);
+}
+.dock-item.dl.open .dock-panel {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateX(0) scale(1);
+}
+
+.dl-panel-head { display: flex; align-items: center; gap: 8px; }
+.dl-panel-status { font-size: 12px; font-weight: 600; color: var(--text); }
+.dl-panel-body {
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 11px;
+  line-height: 1.65;
+  max-height: 148px;
+  overflow-y: auto;
+}
+.dl-panel-body .log-line { animation: none; }   /* 小面板里不逐行浮现，避免抖动 */
+
+/* 结果行操作区 */
+.result .result-actions { display: flex; gap: 6px; flex-shrink: 0; }
+.result .glass-btn.pv.active { background: var(--accent-soft); border-color: rgba(10, 132, 255, 0.35); }
+
+/* ---------- 动画 ---------- */
+@keyframes cardIn {
+  from { opacity: 0; transform: translateY(10px) scale(0.985); }
+  to   { opacity: 1; transform: none; }
+}
+@keyframes lineIn {
+  from { opacity: 0; transform: translateY(3px); }
+  to   { opacity: 1; transform: none; }
+}
+/* 结果卡片逐条浮现 */
+.result { animation: cardIn 0.46s var(--spring-soft) backwards; }
+/* 控制台日志逐行浮现 */
+.log-line { animation: lineIn 0.26s ease backwards; }
+
+/* 进度条流光：只有搜索条有，播放条不加动效。
+   仅「搜索进行中」流动，其余时候彻底静止。 */
+.console-bar { position: relative; overflow: hidden; }
+.console-bar::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg,
+    rgba(255, 255, 255, 0) 0%,
+    rgba(255, 255, 255, 0.4) 50%,
+    rgba(255, 255, 255, 0) 100%);
+  transform: translateX(-100%);
+  opacity: 0;
+  animation: barShine 1.7s ease-in-out infinite;
+  animation-play-state: paused;      /* 默认不动，省性能 */
+  transition: opacity 0.3s ease;
+  pointer-events: none;
+}
+.console-card.running .console-bar::after {
+  opacity: 1;
+  animation-play-state: running;
+}
+@keyframes barShine {
+  0%        { transform: translateX(-100%); }
+  55%, 100% { transform: translateX(100%); }
+}
+
+/* 尊重系统的「减少动态效果」设置 */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* ---------- 响应式 ---------- */
+@media (max-width: 640px) {
+  .search-row { flex-direction: column; }
+  .source-popover { width: 100%; }
+  .panel { left: 14px; right: 14px; width: auto; bottom: 68px; }
+  .card { padding: 20px; }
+  .console-card { padding: 0; }
+  .console-body { max-height: 180px; font-size: 11px; }
+  /* 坞：面板改为向上展开，避免超出右边界 */
+  .dock { left: 14px; bottom: 14px; gap: 9px; }
+  .dock-panel { gap: 9px; padding: 8px 11px; border-radius: 14px; }
+  .panel-name, .panel-artist { max-width: 116px; }
+  .panel-track { width: 84px; }
+  .panel-time { font-size: 10.5px; }
+  .gear { right: 14px; bottom: 14px; width: 40px; height: 40px; }
+}
+
+/* 中等宽度：给音量滑杆让点位置（面板是 nowrap 的单行，靠收窄滑杆而不是溢出） */
+@media (max-width: 900px) {
+  .panel-vol { gap: 4px; }
+  .panel-vol input[type="range"] { width: 52px; }
+}
+
+/* 窄屏：面板横向空间很紧，优先保住曲名/进度/音量，
+   把「已播 / 总时长」这行文字让出去（进度条本身仍能拖动，信息不丢） */
+@media (max-width: 440px) {
+  .panel-time { display: none; }
+  .panel-track { width: 56px; min-width: 56px; }
+  .panel-vol input[type="range"] { width: 44px; }
+}

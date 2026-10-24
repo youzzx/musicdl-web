@@ -1,0 +1,22 @@
+# ---- 运行产物 ----
+downloads/
+.cache/
+*.log
+
+# ---- Python ----
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pylibs/
+
+# ---- 镜像与打包产物 ----
+*.tar
+image-export/
+
+# ---- 编辑器 / 系统 ----
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+desktop.ini

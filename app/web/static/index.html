@@ -1,0 +1,329 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>MusicDL</title>
+  <link rel="icon" type="image/svg+xml" href="/static/avatar.svg" />
+  <link rel="icon" type="image/png" sizes="256x256" href="/static/avatar.png" />
+  <link rel="apple-touch-icon" href="/static/avatar.png" />
+  <link rel="stylesheet" href="/static/style.css" />
+</head>
+<body>
+  <!-- 背景层：受模糊/亮度控制 -->
+  <div class="bg-layer" id="bgLayer"></div>
+  <div class="bg-vignette" id="bgVignette"></div>
+
+  <!-- 设置面板（右下角齿轮展开）：背景设置 / Cookie 设置 / AI 翻译 三个分页 -->
+  <aside class="glass panel" id="bgPanel" aria-hidden="true">
+    <div class="panel-head">
+      <h3>设置</h3>
+      <button class="close" id="bgClose" aria-label="关闭">✕</button>
+    </div>
+
+    <div class="panel-tabs" role="tablist">
+      <span class="tab-indicator" id="tabIndicator" aria-hidden="true"></span>
+      <button class="tab active" id="tabBg" type="button" role="tab" aria-selected="true">背景</button>
+      <button class="tab" id="tabCookie" type="button" role="tab" aria-selected="false">Cookie</button>
+      <button class="tab" id="tabAi" type="button" role="tab" aria-selected="false">AI 翻译</button>
+    </div>
+
+    <!-- 分页互不叠加：面板高度跟随当前分页内容 -->
+    <div class="panel-body">
+      <!-- 分页 1：背景设置 -->
+      <div class="panel-page" id="pageBg">
+      <section class="pgroup">
+        <h4 class="pgroup-title">背景图片</h4>
+        <div class="url-row">
+          <div class="input-wrap">
+            <input type="text" id="bgUrl" placeholder="https://example.com/image.jpg" spellcheck="false" />
+            <button class="input-clear" id="bgClear" type="button" aria-label="清空" hidden>✕</button>
+          </div>
+          <button class="primary small" id="bgApply">应用</button>
+        </div>
+        <p class="hint" id="bgHint"></p>
+      </section>
+
+      <section class="pgroup">
+        <h4 class="pgroup-title">滤镜</h4>
+        <div class="slider-row">
+          <div class="slider-head">
+            <label for="blurRange">模糊度</label>
+            <output id="blurVal">0px</output>
+          </div>
+          <input type="range" id="blurRange" min="0" max="40" step="1" value="0" />
+        </div>
+        <div class="slider-row">
+          <div class="slider-head">
+            <label for="brightRange">亮度</label>
+            <output id="brightVal">100%</output>
+          </div>
+          <input type="range" id="brightRange" min="0" max="100" step="1" value="100" />
+        </div>
+      </section>
+
+      <section class="pgroup">
+        <h4 class="pgroup-title">界面</h4>
+        <div class="slider-row">
+          <div class="slider-head">
+            <label for="glassRange">UI 块透明度</label>
+            <output id="glassVal">40%</output>
+          </div>
+          <input type="range" id="glassRange" min="5" max="90" step="1" value="40" />
+        </div>
+      </section>
+
+      <button class="glass-btn block" id="bgReset">恢复默认</button>
+    </div>
+
+    <!-- 分页 2：Cookie 设置 -->
+    <div class="panel-page" id="pageCookie" hidden>
+      <section class="pgroup">
+        <h4 class="pgroup-title">夸克网盘</h4>
+        <textarea id="quarkCookie" rows="2" spellcheck="false"
+                  placeholder="粘贴 Cookie"></textarea>
+        <p class="hint" id="quarkHint"></p>
+        <div class="quark-tags" id="quarkTags"></div>
+      </section>
+
+      <section class="pgroup">
+        <h4 class="pgroup-title">其他平台</h4>
+        <div class="cookie-slots" id="cookieSlots"></div>
+      </section>
+
+      <!-- 状态行放在分组外：没有要配置的平台时整组收起，但「读取中 / 保存失败」仍要看得到 -->
+      <p class="hint" id="cookieHint"></p>
+
+      <div class="panel-actions">
+        <button class="primary block" id="cookieSave">保存并重新检测</button>
+        <button class="glass-btn block spaced" id="cookieClear">清空全部凭证</button>
+      </div>
+    </div>
+
+    <!-- 分页 3：AI 翻译（无分组标题，字段直接排列） -->
+    <div class="panel-page" id="pageAi" hidden>
+      <section class="pgroup">
+        <label class="switch-row" for="aiEnabled">
+          <span>启用 AI 翻译</span>
+          <input type="checkbox" id="aiEnabled" class="switch" />
+        </label>
+        <div class="ai-field">
+          <label for="aiBaseUrl">API 地址</label>
+          <input type="text" id="aiBaseUrl" spellcheck="false"
+                 placeholder="https://api.deepseek.com" />
+        </div>
+        <div class="ai-field">
+          <label for="aiKey">API Key</label>
+          <input type="password" id="aiKey" spellcheck="false" placeholder="sk-…" autocomplete="off" />
+        </div>
+        <div class="ai-field">
+          <label for="aiModel">模型</label>
+          <input type="text" id="aiModel" spellcheck="false" placeholder="deepseek-flash" />
+        </div>
+        <p class="hint" id="aiHint"></p>
+        <div class="ai-field">
+          <label for="aiTarget">目标语言</label>
+          <select id="aiTarget"></select>
+        </div>
+        <label class="switch-row" for="aiBilingual">
+          <span>写入双语歌词（原文 + 译文）</span>
+          <input type="checkbox" id="aiBilingual" class="switch" checked />
+        </label>
+        <p class="hint" id="aiStatus"></p>
+      </section>
+
+      <div class="panel-actions">
+        <button class="primary block" id="aiSave">保存</button>
+        <button class="glass-btn block spaced" id="aiTest">测试连接</button>
+      </div>
+    </div>
+    </div>
+  </aside>
+
+  <!-- 主内容 -->
+  <main class="main">
+    <section class="glass card search-card">
+      <div class="brand">
+        <img class="logo" src="/static/avatar.svg" alt="MusicDL 看板娘：戴耳机的少女" />
+        <h1>MusicDL</h1>
+      </div>
+
+      <!-- 搜索栏（含历史） -->
+      <div class="search-row">
+        <div class="search-input-wrap">
+          <svg class="search-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+               stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" />
+          </svg>
+          <input type="text" id="keyword" placeholder="搜索歌曲、歌手、专辑" autocomplete="off" />
+          <div class="popover history-pop" id="historyPop">
+            <div class="pop-head">
+              <span>最近搜索</span>
+              <button class="mini" id="historyClear" type="button">清空</button>
+            </div>
+            <ul class="history-list" id="historyList"></ul>
+          </div>
+        </div>
+        <button class="primary" id="searchBtn">搜索</button>
+      </div>
+
+      <!-- 来源选择器：小方块 → 点开成一列 -->
+      <div class="source-picker">
+        <button class="source-trigger" id="sourceTrigger" type="button" aria-haspopup="true" aria-expanded="false">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+               stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <polygon points="12 2 2 7 12 12 22 7 12 2" /><polyline points="2 17 12 22 22 17" /><polyline points="2 12 12 17 22 12" />
+          </svg>
+          <span class="source-trigger-label">来源</span>
+          <span class="source-badge" id="sourceBadge">4</span>
+          <svg class="chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+               stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <polyline points="6 9 12 15 18 9" />
+          </svg>
+        </button>
+
+        <div class="popover source-popover" id="sourcePopover">
+          <input type="text" class="sources-filter" id="sourcesFilter" placeholder="筛选来源" autocomplete="off" />
+          <div class="source-list" id="sourceList"></div>
+          <div class="source-foot">
+            <button class="mini" id="sourcesAll" type="button">全选</button>
+            <button class="mini" id="sourcesNone" type="button">清空</button>
+            <span class="sources-count" id="sourcesCount">4 / 57</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 搜索过程（可收缩） -->
+    <section class="glass card console-card" id="consoleCard" hidden>
+      <div class="console-head" id="consoleHead" role="button" tabindex="0" aria-label="展开或收起搜索过程">
+        <svg class="console-icon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+             stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <polyline points="4 17 10 11 4 5" /><line x1="12" y1="19" x2="20" y2="19" />
+        </svg>
+        <span class="console-title">搜索过程</span>
+        <span class="console-status" id="consoleStatus">准备中…</span>
+        <svg class="chevron console-chevron" width="13" height="13" viewBox="0 0 24 24" fill="none"
+             stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <polyline points="6 9 12 15 18 9" />
+        </svg>
+      </div>
+      <div class="console-progress" role="progressbar" aria-label="搜索进度">
+        <div class="console-bar" id="consoleBar"></div>
+      </div>
+      <div class="console-body" id="consoleBody"></div>
+    </section>
+
+    <!-- 结果区 -->
+    <section id="results" class="results" aria-live="polite"></section>
+  </main>
+
+  <!-- 左下角悬浮坞：播放器在上，状态在下。收起时都是一个玻璃圆，悬停向右展开 -->
+  <div class="dock">
+    <!-- 下载详情：收起是圆（下载图标）→ 悬停 ">" → 点击展开 "<" -->
+    <div class="dock-item dl" id="dlConsole">
+      <button class="dock-circle glass" id="dlConsoleHead" type="button"
+              aria-label="展开或收起下载详情" aria-expanded="false">
+        <svg class="dl-idle" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+             stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M12 3v12" /><polyline points="7 10 12 15 17 10" /><path d="M4 19h16" />
+        </svg>
+        <svg class="dl-chev" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+             stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <polyline points="9 6 15 12 9 18" />
+        </svg>
+      </button>
+      <div class="dock-panel glass dl-panel">
+        <div class="dl-panel-head">
+          <svg class="dl-ring console-ring" viewBox="0 0 36 36" aria-hidden="true">
+            <circle class="dl-ring-bg" cx="18" cy="18" r="15.9155"></circle>
+            <circle class="dl-ring-fg" id="dlRingFg" cx="18" cy="18" r="15.9155"></circle>
+          </svg>
+          <span class="dl-panel-status" id="dlConsoleStatus">就绪</span>
+        </div>
+        <div class="dl-panel-body" id="dlConsoleBody"></div>
+      </div>
+    </div>
+
+    <div class="dock-item player" id="player">
+      <button class="dock-circle glass" id="playerToggle" type="button"
+              aria-label="展开或收起播放控制" aria-expanded="false">
+        <svg class="player-idle" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+             stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M9 18V5l12-2v13" />
+          <circle cx="6" cy="18" r="3" />
+          <circle cx="18" cy="16" r="3" />
+        </svg>
+        <svg class="player-chev" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+             stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <polyline points="9 6 15 12 9 18" />
+        </svg>
+      </button>
+      <div class="dock-panel glass">
+        <button class="panel-play" id="playerPlay" type="button" aria-label="播放或暂停">
+          <svg class="ico-play" width="13" height="13" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+            <path d="M8 5.2v13.6L19 12z" />
+          </svg>
+          <svg class="ico-pause" width="13" height="13" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+            <rect x="7" y="5.4" width="3.4" height="13.2" rx="1.2" />
+            <rect x="13.6" y="5.4" width="3.4" height="13.2" rx="1.2" />
+          </svg>
+        </button>
+        <div class="panel-songs">
+          <div class="panel-name" id="playerTitle">—</div>
+          <div class="panel-artist" id="playerArtist"></div>
+        </div>
+        <div class="panel-track" id="playerTrack" role="slider" aria-label="播放进度" tabindex="0">
+          <div class="panel-fill" id="playerFill"></div>
+        </div>
+        <span class="panel-time" id="playerTime">0:00 / 0:00</span>
+        <div class="panel-vol">
+          <button class="panel-vol-btn" id="playerVolBtn" type="button"
+                  aria-label="静音" aria-pressed="false" title="静音">
+            <svg class="vol-ico vol-high" width="15" height="15" viewBox="0 0 24 24" fill="none"
+                 stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"
+                 aria-hidden="true">
+              <path d="M11 5 6 9H3v6h3l5 4z" />
+              <path d="M15.4 8.6a5 5 0 0 1 0 6.8" />
+              <path d="M18.3 5.7a9 9 0 0 1 0 12.6" />
+            </svg>
+            <svg class="vol-ico vol-low" width="15" height="15" viewBox="0 0 24 24" fill="none"
+                 stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"
+                 aria-hidden="true">
+              <path d="M11 5 6 9H3v6h3l5 4z" />
+              <path d="M15.4 8.6a5 5 0 0 1 0 6.8" />
+            </svg>
+            <svg class="vol-ico vol-mute" width="15" height="15" viewBox="0 0 24 24" fill="none"
+                 stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"
+                 aria-hidden="true">
+              <path d="M11 5 6 9H3v6h3l5 4z" />
+              <path d="m15.5 9.5 5 5" />
+              <path d="m20.5 9.5-5 5" />
+            </svg>
+          </button>
+          <input class="panel-vol-range" id="playerVol" type="range" min="0" max="100" step="1"
+                 value="70" aria-label="音量" />
+        </div>
+        <button class="panel-close" id="playerClose" type="button" aria-label="关闭播放器">✕</button>
+      </div>
+    </div>
+
+    <div class="dock-item status" id="status" title="后端状态" tabindex="0">
+      <span class="dock-circle glass"><span class="dot" id="statusDot"></span></span>
+      <div class="dock-panel glass"><span class="panel-status" id="statusText">就绪</span></div>
+    </div>
+  </div>
+  <audio id="audioEl" preload="none"></audio>
+
+  <!-- 右下角齿轮 -->
+  <button class="glass gear" id="bgToggle" type="button" aria-label="背景设置" title="背景设置">
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+         stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+      <circle cx="12" cy="12" r="3.1" />
+      <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1Z" />
+    </svg>
+  </button>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>

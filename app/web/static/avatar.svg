@@ -1,0 +1,101 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256">
+  <!-- 站点看板娘：戴耳机的音乐少女（左右对称设计，x=128 为中轴） -->
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#b8c6ff"/>
+      <stop offset="0.55" stop-color="#fbc2eb"/>
+      <stop offset="1" stop-color="#ffe29f"/>
+    </linearGradient>
+    <linearGradient id="hairG" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ffb3d1"/>
+      <stop offset="1" stop-color="#a78bfa"/>
+    </linearGradient>
+    <linearGradient id="eyeG" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#7ea8ff"/>
+      <stop offset="1" stop-color="#43509e"/>
+    </linearGradient>
+    <linearGradient id="cupG" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#8f86e0"/>
+      <stop offset="1" stop-color="#6a63b8"/>
+    </linearGradient>
+  </defs>
+
+  <!-- 底板：圆角方形 + 站点同款粉彩渐变 -->
+  <rect width="256" height="256" rx="56" fill="url(#bg)"/>
+  <circle cx="70" cy="64" r="42" fill="#ffffff" opacity="0.18"/>
+
+  <!-- 后发（左半 + 镜像）：两侧垂落、发尾外翘 -->
+  <g id="hairL">
+    <path fill="url(#hairG)" d="M128 54
+      C 94 54 70 78 64 110
+      C 60 128 57 148 47 164
+      C 39 178 47 196 64 196
+      C 77 196 83 185 80 171
+      C 78 160 80 147 85 136
+      C 92 118 100 102 113 94
+      C 120 89 125 78 128 72
+      Z"/>
+  </g>
+  <use href="#hairL" transform="translate(256 0) scale(-1 1)"/>
+
+  <!-- 脸（下巴 193，刘海落在眼睛上方） -->
+  <ellipse cx="128" cy="148" rx="50" ry="45" fill="#ffe9d9"/>
+
+  <!-- 刘海（左半 + 镜像）：三撮发尖收在眼睛上方 y≈136 -->
+  <g id="bangsL">
+    <path fill="url(#hairG)" d="M128 76
+      C 104 78 86 96 80 122
+      L 86 124
+      C 90 132 96 138 103 136
+      C 100 128 104 120 110 116
+      C 116 126 122 131 128 132
+      Z"/>
+  </g>
+  <use href="#bangsL" transform="translate(256 0) scale(-1 1)"/>
+
+  <!-- 耳机 -->
+  <path d="M66 132 C 72 78 98 60 128 60 C 158 60 184 78 190 132"
+        fill="none" stroke="#46405f" stroke-width="12" stroke-linecap="round"/>
+  <g id="cupL">
+    <ellipse cx="62" cy="150" rx="17" ry="22" fill="#46405f"/>
+    <ellipse cx="62" cy="150" rx="11" ry="16" fill="url(#cupG)"/>
+    <ellipse cx="58" cy="143" rx="4" ry="6" fill="#ffffff" opacity="0.28"/>
+  </g>
+  <use href="#cupL" transform="translate(256 0) scale(-1 1)"/>
+
+  <!-- 呆毛 -->
+  <path d="M128 52 C 122 40 130 34 138 42" fill="none" stroke="#d78ae0"
+        stroke-width="5" stroke-linecap="round"/>
+
+  <!-- 眼睛（左 + 镜像） -->
+  <g id="eyeL">
+    <ellipse cx="106" cy="154" rx="10" ry="13" fill="url(#eyeG)" stroke="#46405f" stroke-width="2"/>
+    <ellipse cx="106" cy="157" rx="5" ry="6.5" fill="#2f2a4a"/>
+    <circle cx="102.5" cy="149" r="3" fill="#ffffff"/>
+    <circle cx="109.5" cy="159" r="1.7" fill="#ffffff" opacity="0.9"/>
+    <path d="M96 142 C 101 137 111 137 116 142" fill="none" stroke="#46405f"
+          stroke-width="2.5" stroke-linecap="round"/>
+  </g>
+  <use href="#eyeL" transform="translate(256 0) scale(-1 1)"/>
+
+  <!-- 腮红（左 + 镜像） -->
+  <g id="blushL">
+    <ellipse cx="93" cy="172" rx="8.5" ry="4.8" fill="#ff9db4" opacity="0.55"/>
+  </g>
+  <use href="#blushL" transform="translate(256 0) scale(-1 1)"/>
+
+  <!-- 嘴 -->
+  <path d="M119 179 C 124 185 132 185 137 179" fill="none" stroke="#e0637f"
+        stroke-width="3.5" stroke-linecap="round"/>
+
+  <!-- 音符 -->
+  <g transform="translate(190 34) rotate(14)" fill="#46405f">
+    <ellipse cx="0" cy="24" rx="7" ry="5.4" transform="rotate(-14 0 24)"/>
+    <rect x="5.4" y="-1" width="3.6" height="26" rx="1.8"/>
+    <path d="M5.5 -1 C 13 1 19 6 19.5 14 C 15.5 9 10.5 7.5 5.5 8 Z"/>
+  </g>
+
+  <!-- 小星星 -->
+  <path d="M58 40 L60.5 45.5 L66 48 L60.5 50.5 L58 56 L55.5 50.5 L50 48 L55.5 45.5 Z"
+        fill="#ffffff" opacity="0.9"/>
+</svg>

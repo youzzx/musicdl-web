@@ -1,0 +1,21 @@
+services:
+  musicdl-web:
+    build:
+      context: .
+      # 国内网络构建时可加：
+      #   args:
+      #     DEBIAN_MIRROR: mirrors.tuna.tsinghua.edu.cn
+      #     PIP_INDEX_URL: https://pypi.tuna.tsinghua.edu.cn/simple
+    image: musicdl-web:1.0
+    container_name: musicdl-web
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./downloads:/app/downloads
+      - ./.cache:/app/.cache
+    environment:
+      MUSICDL_HOST: 0.0.0.0
+      MUSICDL_PORT: "8000"
+      MUSICDL_OUTPUT: /app/downloads
+      MUSICDL_CACHE: /app/.cache
+    restart: unless-stopped

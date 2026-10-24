@@ -1,0 +1,36 @@
+MusicDL Web
+===========
+
+本仓库（音乐下载器的网页界面与后端）是对 **CharlesPikachu/musicdl** 的二次加工。
+
+上游项目
+--------
+名称   : musicdl —— A lightweight music downloader written in pure python
+地址   : https://github.com/CharlesPikachu/musicdl
+作者   : Zhenchao Jin (CharlesPikachu)
+许可   : PolyForm Noncommercial License 1.0.0
+版权   : Copyright (c) 2018–2026 CharlesPikachu
+许可证原文见 upstream/LICENSE-musicdl
+
+依赖说明
+--------
+- 本仓库的后端通过 `pip install musicdl==2.14.1` 使用上游库，Docker 镜像中同样打包了该版本。
+- 所有音乐源的搜索、解析与下载逻辑均来自上游 musicdl，本项目未修改其源码。
+- 因此本项目整体适用于 PolyForm Noncommercial License 1.0.0：仅限非商业用途。
+
+本项目新增的部分
+----------------
+- app/web/server.py      标准库实现的 HTTP 服务与 API（搜索流、试听代理、下载流、封面代理、凭证管理）
+- app/web/translator.py  AI 歌词翻译（OpenAI 兼容接口）
+- app/web/static/*       前端页面、样式、交互脚本与图标
+- Dockerfile 等打包相关文件
+
+第三方组件
+----------
+- musicdl 2.14.1 — PolyForm Noncommercial 1.0.0（见上）
+- FFmpeg / FLAC   — 系统包，各自遵循其原始许可
+
+免责声明
+--------
+本项目不存储、不传播音乐文件，仅作为下载与试听的客户端。音乐作品版权归各平台与版权方所有。
+请遵守所在地区法律及目标网站的服务条款，勿用于商业用途或大规模抓取。
