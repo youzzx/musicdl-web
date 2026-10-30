@@ -45,6 +45,9 @@ CACHE_DIR = os.environ.get("MUSICDL_CACHE",
                            os.path.join(os.path.expanduser("~"), ".cache", "musicdl-web"))
 HOST = os.environ.get("MUSICDL_HOST", "0.0.0.0")
 PORT = int(os.environ.get("MUSICDL_PORT", "8000"))
+# 搜索总时限（秒）：个别来源会卡住不返回，没有上限的话整个搜索永远结束不了。
+# 到点后把还没回来的来源标记为超时，照样把已拿到的结果返回。
+SEARCH_TIMEOUT = float(os.environ.get("MUSICDL_SEARCH_TIMEOUT", "40"))
 
 # ---------------------------------------------------------------------------
 # 重定向 musicdl 的日志目录（必须在导入 musicdl 之前）
@@ -1161,12 +1164,24 @@ class Handler(BaseHTTPRequestHandler):
         try:
             for s in valid:
                 emit({"type": "start", "source": s, "text": f"→ {s}"})
-            with ThreadPoolExecutor(max_workers=min(len(valid), 10)) as pool:
-                futures = [pool.submit(run_source, s) for s in valid]
-                pending = set(futures)
+            deadline = t0 + SEARCH_TIMEOUT
+            pool = ThreadPoolExecutor(max_workers=min(len(valid), 10))
+            try:
+                fut_src = {pool.submit(run_source, s): s for s in valid}
+                pending = set(fut_src)
                 while pending:
                     finished = [f for f in pending if f.done()]
                     if not finished:
+                        # 到点就不再等：卡住的来源记为超时，已经拿到的结果照常返回
+                        if time.time() > deadline:
+                            for fut in pending:
+                                src = fut_src[fut]
+                                err = f"超时（{int(SEARCH_TIMEOUT)} 秒未返回）"
+                                failed[src] = err
+                                emit({"type": "error_source", "source": src, "error": err,
+                                      "elapsed": round(SEARCH_TIMEOUT, 2)})
+                            pending.clear()
+                            break
                         for line in _drain_log(log_fp):
                             emit({"type": "log", "text": line})
                         time.sleep(0.1)
@@ -1183,6 +1198,9 @@ class Handler(BaseHTTPRequestHandler):
                             emit({"type": "error_source", "source": src, "error": err, "elapsed": dur})
                     for line in _drain_log(log_fp):
                         emit({"type": "log", "text": line})
+            finally:
+                # 不等待卡住的线程，请求立即返回；线程随进程结束
+                pool.shutdown(wait=False, cancel_futures=True)
         finally:
             for line in _drain_log(log_fp):
                 emit({"type": "log", "text": line})

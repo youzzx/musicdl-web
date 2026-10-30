@@ -873,6 +873,8 @@
   }
 
   /* ---------- 搜索（流式，实时显示运行过程） ---------- */
+  let searching = false;      // 搜索期间别让 30 秒一次的健康检查把状态栏冲掉
+
   async function doSearch() {
     const kw = keyword.value.trim();
     if (!kw) { setStatus('请输入关键词', 'warn'); return; }
@@ -880,6 +882,7 @@
 
     addHistory(kw);
     toggleHistory(false);          // 搜索开始即收起历史，避免遮住结果区
+    searching = true;
     searchBtn.disabled = true;
     searchBtn.textContent = '搜索中…';
     resultsEl.innerHTML = '';
@@ -954,6 +957,7 @@
       setStatus('搜索失败：' + err.message, 'err');
     } finally {
       consoleCard.classList.remove('running');   // 结束即停流光
+      searching = false;
       searchBtn.disabled = false;
       searchBtn.textContent = '搜索';
     }
@@ -1386,6 +1390,7 @@
   }
 
   setInterval(async () => {
+    if (searching) return;        // 搜索中不抢状态栏：不然「正在搜索…」会被这句顶掉
     try {
       const r = await fetch('/api/health');
       if (r.ok) {
