@@ -1,10 +1,10 @@
 # syntax=docker/dockerfile:1
 
 # MusicDL Web —— musicdl 的网页版外壳
-# 构建: docker build -t musicdl-web:1.0 .
+# 构建: docker build -t musicdl-web:1.1 .
 # 国内加速: docker build --build-arg DEBIAN_MIRROR=mirrors.tuna.tsinghua.edu.cn \
 #                        --build-arg PIP_INDEX_URL=https://pypi.tuna.tsinghua.edu.cn/simple \
-#                        -t musicdl-web:1.0 .
+#                        -t musicdl-web:1.1 .
 
 FROM python:3.12-slim-trixie
 

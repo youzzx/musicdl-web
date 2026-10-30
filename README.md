@@ -21,12 +21,12 @@
 **Docker：**
 
 ```bash
-docker build -t musicdl-web:1.0 .
+docker build -t musicdl-web:1.1 .
 
 docker run -d --name musicdl-web -p 8000:8000 \
   -v "$PWD/downloads:/app/downloads" \
   -v "$PWD/.cache:/app/.cache" \
-  musicdl-web:1.0
+  musicdl-web:1.1
 ```
 
 国内构建慢，加两个参数换源：
@@ -34,7 +34,7 @@ docker run -d --name musicdl-web -p 8000:8000 \
 ```bash
 docker build --build-arg DEBIAN_MIRROR=mirrors.tuna.tsinghua.edu.cn \
              --build-arg PIP_INDEX_URL=https://pypi.tuna.tsinghua.edu.cn/simple \
-             -t musicdl-web:1.0 .
+             -t musicdl-web:1.1 .
 ```
 
 **不想用 Docker：** 装好 Python 3.12 和 ffmpeg，然后
