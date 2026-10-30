@@ -1517,6 +1517,24 @@ button.dock-circle:active {
   line-height: 1.65;
   max-height: 148px;
   overflow-y: auto;
+  /* 滚动条留出固定位置，日志变长/变短时文字不会左右跳 */
+  scrollbar-gutter: stable;
+}
+/* 和设置面板同一套滚动条：透明轨道 + 圆角细拇指（原生那条带箭头和灰底，太出戏）。
+   注意别看两套混着写：Chromium 一旦看到标准的 scrollbar-width，就会忽略 ::-webkit-scrollbar，
+   所以标准属性只留给 Firefox，Chrome/Edge 走下面的 -webkit 规则。 */
+.dl-panel-body::-webkit-scrollbar { width: 8px; }
+.dl-panel-body::-webkit-scrollbar-track { background: transparent; margin: 4px 0; }
+.dl-panel-body::-webkit-scrollbar-thumb {
+  background: rgba(0, 0, 0, 0.16);
+  border: 2px solid transparent;
+  border-radius: 5px;
+  background-clip: content-box;
+}
+.dl-panel-body::-webkit-scrollbar-thumb:hover { background: rgba(0, 0, 0, 0.28); background-clip: content-box; }
+.dl-panel-body::-webkit-scrollbar-corner { background: transparent; }
+@supports (-moz-appearance: none) {
+  .dl-panel-body { scrollbar-width: thin; scrollbar-color: rgba(0, 0, 0, 0.18) transparent; }
 }
 .dl-panel-body .log-line { animation: none; }   /* 小面板里不逐行浮现，避免抖动 */
 
