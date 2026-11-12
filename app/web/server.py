@@ -566,22 +566,26 @@ def _postprocess_downloaded(audio_path, song, client=None, progress=None):
     ai_cfg = translator.load_config(CACHE_DIR)
     if lyrics and translator.is_ready(ai_cfg) and ai_cfg.get("translate_lyrics"):
         target = ai_cfg.get("target_lang") or "中文"
-        say(f"AI 翻译：正在译为{target}…")
-        t0 = time.time()
-        translated, err = translator.translate_lyrics(lyrics, ai_cfg, progress=say)
-        if translated:
-            result["translated"] = True
-            result["translated_lang"] = target
-            result["translated_lyrics"] = translated
-            if ai_cfg.get("embed_bilingual", True):
-                lyrics = translator.make_bilingual(lyrics, translated)
-                say(f"AI 翻译：完成（{time.time()-t0:.1f}s），写入双语歌词")
-            else:
-                lyrics = translated
-                say(f"AI 翻译：完成（{time.time()-t0:.1f}s），只写入译文")
+        if not translator.has_translatable_lines(lyrics, ai_cfg):
+            # 整首都是目标语言、或者只有中英夹杂的句子：按需求不翻，保留原文
+            say(f"AI 翻译：没有需要译为{target}的句子，保留原文")
         else:
-            say(f"AI 翻译失败，保留原文：{err}")
-            result["translate_error"] = err
+            say(f"AI 翻译：正在译为{target}…")
+            t0 = time.time()
+            translated, err = translator.translate_lyrics(lyrics, ai_cfg, progress=say)
+            if translated:
+                result["translated"] = True
+                result["translated_lang"] = target
+                result["translated_lyrics"] = translated
+                if ai_cfg.get("embed_bilingual", True):
+                    lyrics = translator.make_bilingual(lyrics, translated)
+                    say(f"AI 翻译：完成（{time.time()-t0:.1f}s），译文以「」排在原文下方")
+                else:
+                    lyrics = translated
+                    say(f"AI 翻译：完成（{time.time()-t0:.1f}s），只写入译文")
+            else:
+                say(f"AI 翻译失败，保留原文：{err}")
+                result["translate_error"] = err
     elif lyrics:
         say("AI 翻译：未启用，跳过")
 

@@ -41,6 +41,49 @@ _LRC_TIME = re.compile(
     r")+)"
 )
 
+# 中日韩字符：用来判断「这句是不是已经在说目标语言」。
+_CJK = re.compile(r"[\u3400-\u4dbf\u4e00-\u9fff\u3040-\u30ff\uac00-\ud7af\u3000-\u303f\uff00-\uffef]")
+# 带到任一种字母（含重音、假名、谚文等）的行才算「有外语内容」
+_LETTER = re.compile(r"[^\W\d_]", re.UNICODE)
+
+# 目标语言属于「中日韩」时，只要这句里已经有中日韩字，就不翻。
+# 例：GEM 的 “where did you go 我还在原地” 这种中英夹杂 —— 不翻；
+#     整句都是外语（“Where did you go”）—— 才翻。
+_CJK_TARGETS = ("中文", "简体", "繁體", "繁体", "日本", "한국", "朝鲜", "粤语", "粤語")
+
+
+def _is_cjk_target(target):
+    t = str(target or "")
+    return any(k in t for k in _CJK_TARGETS)
+
+
+# 元数据行（[ti:] / [ar:] / [offset:] 等）：不是歌词，不翻译也不参与双语配对
+_LRC_META = re.compile(r"^\s*\[(?:ti|ar|al|by|offset|re|ve|length|lang|au|la|tool):", re.IGNORECASE)
+
+
+def _is_meta_line(line):
+    return bool(_LRC_META.match(str(line or "")))
+
+
+def needs_translation(text, target):
+    """这一行要不要送翻译模型。
+
+    - 目标语言是中日韩：句子里已经有中日韩字 → 不翻（中英夹杂的歌词保持原样）；
+      纯外语 → 翻。
+    - 目标语言是其他语种：没有字母的行（纯符号/编号）→ 不翻；其余都翻。
+    """
+    s = str(text or "").strip()
+    if not s:
+        return False
+    if _is_meta_line(s):
+        return False
+    # 「纯音乐」之类的标记不翻
+    if s.startswith(("[", "（", "(")) and s.endswith(("]", "）", ")")):
+        return False
+    if _is_cjk_target(target):
+        return not _CJK.search(s)
+    return bool(_LETTER.search(s))
+
 
 # ---------------------------------------------------------------------------
 # 配置读写
@@ -137,9 +180,13 @@ def _chat(cfg, messages, timeout=None):
 # 歌词翻译
 # ---------------------------------------------------------------------------
 def _split_lyrics(lyrics):
-    """拆成 (时间戳, 文本) 列表；纯文本行时间戳为空。"""
+    """拆成 (时间戳, 文本) 列表；纯文本行时间戳为空，元数据行时间戳为空且文本原样。"""
     rows = []
     for line in str(lyrics or "").splitlines():
+        if _is_meta_line(line):
+            # 元数据既不是时间戳也不是歌词：整行塞进文本，拼回时原样输出
+            rows.append(("", line.strip()))
+            continue
         m = _LRC_TIME.match(line)
         if m:
             rows.append((m.group(0).strip(), line[m.end():].strip()))
@@ -171,7 +218,7 @@ def _translate_chunk(cfg, chunk):
         f"把下面的歌词逐行翻译成{target}。\n"
         "要求：\n"
         "1. 每行以原有编号开头，编号必须与输入一一对应，不要合并或拆分行；\n"
-        "2. 已经是目标语言的行直接原样返回；\n"
+        f"2. 只是翻译，不要保留原文；不要在中途解释或加注；\n"
         "3. 只输出译文，不要任何解释、不要加引号或额外标点；\n"
         "4. 空行返回空内容。\n\n" + "\n".join(numbered)
     )
@@ -194,31 +241,46 @@ def _translate_chunk(cfg, chunk):
     return result
 
 
+def has_translatable_lines(lyrics, cfg):
+    """歌词里有没有真正需要翻译的行（目标语言是中文时，纯中文/中英夹杂都不算）。"""
+    target = cfg.get("target_lang") or "中文"
+    return any(needs_translation(text, target) for _, text in _split_lyrics(lyrics))
+
+
 def translate_lyrics(lyrics, cfg, progress=None):
     """把 LRC/纯文本歌词翻译成目标语言，保留时间戳。
 
-    返回 (译文, 错误信息)。失败时译文为 None。
+    只把「真的需要翻」的行送给模型：目标语言是中文时，
+    中英夹杂的句子（比如 “where did you go 我还在原地”）原样保留，
+    整句外语的才翻。返回 (译文, 错误信息)。失败时译文为 None。
     """
     if not is_ready(cfg):
         return None, "AI 翻译未启用或未配置 api_key"
     rows = _split_lyrics(lyrics)
     if not rows:
         return None, "歌词为空"
+    target = cfg.get("target_lang") or "中文"
 
     translated = [""] * len(rows)
-    chunks = list(_chunked(rows))
+    # 需要翻译的下标 -> 送去翻；跳过的行译文留空，后面拼回时用原文
+    todo = [i for i, (_, text) in enumerate(rows) if needs_translation(text, target)]
+    if not todo:
+        return None, "没有需要翻译的行（都是目标语言或纯符号）"
+
+    chunks = list(_chunked([(rows[i][0], rows[i][1]) for i in todo]))
+    offset = 0
     try:
         for idx, chunk in enumerate(chunks):
-            start = sum(len(c) for c in chunks[:idx])
             texts = _translate_chunk(cfg, chunk)
             for j, t in enumerate(texts):
-                translated[start + j] = t
+                translated[todo[offset + j]] = t
+            offset += len(chunk)
             if progress:
                 progress(f"歌词翻译 {idx + 1}/{len(chunks)} 块")
     except Exception as exc:  # noqa: BLE001
         return None, f"{type(exc).__name__}: {exc}"
 
-    # 拼回 LRC
+    # 拼回 LRC：跳过的行原样保留
     lines = []
     for (ts, orig), tr in zip(rows, translated):
         text = tr or orig
@@ -227,7 +289,13 @@ def translate_lyrics(lyrics, cfg, progress=None):
 
 
 def make_bilingual(original, translated):
-    """把原文与译文拼成双语歌词：每个时间戳下先原文后译文。"""
+    """原文与译文拼成双语歌词：译文排在原文下面一行，用「」包起来。
+
+    形如：
+        [00:12.30]Where did you go
+        [00:12.30]「你去了哪里」
+    没翻的行（译文与原文相同或为空）不重复输出。
+    """
     o_rows = _split_lyrics(original)
     t_rows = _split_lyrics(translated)
     n = max(len(o_rows), len(t_rows))
@@ -238,8 +306,10 @@ def make_bilingual(original, translated):
         ts = o[0] or t[0]
         if o[1]:
             lines.append(f"{ts}{o[1]}" if ts else o[1])
-        if t[1] and t[1] != o[1]:
-            lines.append(f"{ts}{t[1]}" if ts else t[1])
+        tr = t[1].strip()
+        if tr and tr != o[1].strip():
+            tr = f"「{tr}」"
+            lines.append(f"{ts}{tr}" if ts else tr)
     return "\n".join(lines)
 
 
