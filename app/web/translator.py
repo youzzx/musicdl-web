@@ -41,15 +41,34 @@ _LRC_TIME = re.compile(
     r")+)"
 )
 
-# 中日韩字符：用来判断「这句是不是已经在说目标语言」。
-_CJK = re.compile(r"[\u3400-\u4dbf\u4e00-\u9fff\u3040-\u30ff\uac00-\ud7af\u3000-\u303f\uff00-\uffef]")
-# 带到任一种字母（含重音、假名、谚文等）的行才算「有外语内容」
+# 中文字符（汉字 + CJK 标点 / 全角）：出现即认为这行已经在说中文。
+_HAN = re.compile(r"[\u3400-\u4dbf\u4e00-\u9fff\u3000-\u303f\uff00-\uffef]")
+# 另一门语言的明显文字：假名 / 谚文 / 西里尔 / 希腊 / 阿拉伯 / 希伯来 /
+# 天城文 / 泰文。日文歌词常「汉字 + 假名」混排，只要命中这些字符就送模型，
+# 避免汉字把假名盖过去。
+_FOREIGN_SCRIPT = re.compile(
+    r"[\u3040-\u30ff\u31f0-\u31ff"               # 平假名 / 片假名 / 片假名扩展
+    r"\uac00-\ud7af\u1100-\u11ff\u3130-\u318f"   # 谚文音节与字母
+    r"\u0400-\u052f"                             # 西里尔
+    r"\u0370-\u03ff\u1f00-\u1fff"                 # 希腊
+    r"\u0600-\u06ff\u0750-\u077f\u08a0-\u08ff"   # 阿拉伯
+    r"\u0590-\u05ff\u0900-\u097f\u0e00-\u0e7f"   # 希伯来 / 天城文 / 泰文
+    r"\uff66-\uff9f]"                             # 半角片假名
+)
+# 任意文字字符（含带重音的拉丁字母及上述全部文字）：判断有无可译内容
 _LETTER = re.compile(r"[^\W\d_]", re.UNICODE)
+# 中日韩字符全集：目标语言为日 / 韩等 CJK 语种时沿用原判定
+_CJK = re.compile(r"[\u3400-\u4dbf\u4e00-\u9fff\u3040-\u30ff\uac00-\ud7af\u3000-\u303f\uff00-\uffef]")
 
-# 目标语言属于「中日韩」时，只要这句里已经有中日韩字，就不翻。
-# 例：GEM 的 “where did you go 我还在原地” 这种中英夹杂 —— 不翻；
-#     整句都是外语（“Where did you go”）—— 才翻。
+# 中文类目标：启用「任意非中文 → 中文」规则
+_CHINESE_TARGETS = ("中文", "简体", "繁體", "繁体", "粤语", "粤語")
+# 全部 CJK 目标：日 / 韩 / 朝等语种沿用原判定
 _CJK_TARGETS = ("中文", "简体", "繁體", "繁体", "日本", "한국", "朝鲜", "粤语", "粤語")
+
+
+def _is_chinese_target(target):
+    t = str(target or "")
+    return any(k in t for k in _CHINESE_TARGETS)
 
 
 def _is_cjk_target(target):
@@ -57,7 +76,7 @@ def _is_cjk_target(target):
     return any(k in t for k in _CJK_TARGETS)
 
 
-# 元数据行（[ti:] / [ar:] / [offset:] 等）：不是歌词，不翻译也不参与双语配对
+# [ti:] / [ar:] / [offset:] 等元数据行：作为元数据单独处理，原文直出
 _LRC_META = re.compile(r"^\s*\[(?:ti|ar|al|by|offset|re|ve|length|lang|au|la|tool):", re.IGNORECASE)
 
 
@@ -68,18 +87,30 @@ def _is_meta_line(line):
 def needs_translation(text, target):
     """这一行要不要送翻译模型。
 
-    - 目标语言是中日韩：句子里已经有中日韩字 → 不翻（中英夹杂的歌词保持原样）；
-      纯外语 → 翻。
-    - 目标语言是其他语种：没有字母的行（纯符号/编号）→ 不翻；其余都翻。
+    - 目标语言为中文类：把「任意非中文的语言」译成中文 —— 英 / 日 / 韩 /
+      俄 / 法 / 德 / 西 / 葡 / 意 / 阿 / 泰……整行没在说中文就送模型；
+      已经含中文的句子（纯中文、中英夹杂 "where did you go 我还在原地"）保留原文。
+      日文「汉字 + 假名」混排同样送模型。
+    - 目标语言为日 / 韩等 CJK 语种：含对应 CJK 字符即保留原文，其余送模型。
+    - 目标语言为其他语种：纯符号 / 编号行保留原文，其余送模型。
     """
     s = str(text or "").strip()
     if not s:
         return False
     if _is_meta_line(s):
         return False
-    # 「纯音乐」之类的标记不翻
+    # 「纯音乐」之类的标记原样保留
     if s.startswith(("[", "（", "(")) and s.endswith(("]", "）", ")")):
         return False
+    if _is_chinese_target(target):
+        # 1) 命中另一门语言的明显文字 → 翻（含日文汉字 + 假名混排）
+        if _FOREIGN_SCRIPT.search(s):
+            return True
+        # 2) 已经在说中文 → 保留（纯中文、中英夹杂）
+        if _HAN.search(s):
+            return False
+        # 3) 余下的拉丁字母文字（英 / 法 / 德 / 西 / 葡 / 意…）→ 翻
+        return bool(_LETTER.search(s))
     if _is_cjk_target(target):
         return not _CJK.search(s)
     return bool(_LETTER.search(s))
@@ -242,7 +273,7 @@ def _translate_chunk(cfg, chunk):
 
 
 def has_translatable_lines(lyrics, cfg):
-    """歌词里有没有真正需要翻译的行（目标语言是中文时，纯中文/中英夹杂都不算）。"""
+    """歌词里有没有需要送模型的行（中文目标下，纯中文与中英夹杂原样保留）。"""
     target = cfg.get("target_lang") or "中文"
     return any(needs_translation(text, target) for _, text in _split_lyrics(lyrics))
 
@@ -251,8 +282,10 @@ def translate_lyrics(lyrics, cfg, progress=None):
     """把 LRC/纯文本歌词翻译成目标语言，保留时间戳。
 
     只把「真的需要翻」的行送给模型：目标语言是中文时，
-    中英夹杂的句子（比如 “where did you go 我还在原地”）原样保留，
-    整句外语的才翻。返回 (译文, 错误信息)。失败时译文为 None。
+    任意非中文语种（英 / 日 / 韩 / 俄 / 法…）都送模型译成中文，
+    纯中文与中英夹杂的句子（比如 “where did you go 我还在原地”）原样保留。
+    译文格式沿用现状：原文下一行、同时间戳、用「」包住（见 make_bilingual()）。
+    返回 (译文, 错误信息)。失败时译文为 None。
     """
     if not is_ready(cfg):
         return None, "AI 翻译未启用或未配置 api_key"
@@ -265,7 +298,7 @@ def translate_lyrics(lyrics, cfg, progress=None):
     # 需要翻译的下标 -> 送去翻；跳过的行译文留空，后面拼回时用原文
     todo = [i for i, (_, text) in enumerate(rows) if needs_translation(text, target)]
     if not todo:
-        return None, "没有需要翻译的行（都是目标语言或纯符号）"
+        return None, "没有需要翻译的行（整首都是中文或纯符号）"
 
     chunks = list(_chunked([(rows[i][0], rows[i][1]) for i in todo]))
     offset = 0

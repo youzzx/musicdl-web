@@ -567,7 +567,7 @@ def _postprocess_downloaded(audio_path, song, client=None, progress=None):
     if lyrics and translator.is_ready(ai_cfg) and ai_cfg.get("translate_lyrics"):
         target = ai_cfg.get("target_lang") or "中文"
         if not translator.has_translatable_lines(lyrics, ai_cfg):
-            # 整首都是目标语言、或者只有中英夹杂的句子：按需求不翻，保留原文
+            # 整首都是中文、或者只有中英夹杂的句子：保留原文
             say(f"AI 翻译：没有需要译为{target}的句子，保留原文")
         else:
             say(f"AI 翻译：正在译为{target}…")

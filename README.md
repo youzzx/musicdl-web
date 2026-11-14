@@ -13,8 +13,9 @@
 - 多平台搜歌，50 多个源随便勾，哪个源挂了会直接告诉你
 - 在线试听，有音量条和静音，进度能拖
 - 下载，字节进度、转速环、日志都有
-- 歌词机翻（任何 OpenAI 兼容接口，默认 `deepseek-flash`）：整句外语才翻，
-  中英夹杂和纯中文原样保留；译文用「」排在原歌词下方
+- 歌词机翻（任何 OpenAI 兼容接口，默认 `deepseek-flash`）：任意非中文语种
+  （英 / 日 / 韩 / 俄 / 法…）都译成中文，中英夹杂与纯中文原样保留；
+  译文用「」排在原歌词下方
 - 毛玻璃界面，手机上也正常
 
 ## 跑起来
@@ -22,12 +23,12 @@
 **Docker：**
 
 ```bash
-docker build -t musicdl-web:1.2 .
+docker build -t musicdl-web:1.3 .
 
 docker run -d --name musicdl-web -p 8000:8000 \
   -v "$PWD/downloads:/app/downloads" \
   -v "$PWD/.cache:/app/.cache" \
-  musicdl-web:1.2
+  musicdl-web:1.3
 ```
 
 国内构建慢，加两个参数换源：
@@ -35,7 +36,7 @@ docker run -d --name musicdl-web -p 8000:8000 \
 ```bash
 docker build --build-arg DEBIAN_MIRROR=mirrors.tuna.tsinghua.edu.cn \
              --build-arg PIP_INDEX_URL=https://pypi.tuna.tsinghua.edu.cn/simple \
-             -t musicdl-web:1.2 .
+             -t musicdl-web:1.3 .
 ```
 
 **不想用 Docker：** 装好 Python 3.12 和 ffmpeg，然后
