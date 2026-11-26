@@ -333,6 +333,26 @@
       <div class="dock-panel glass"><span class="panel-status" id="statusText">就绪</span></div>
     </div>
   </div>
+  <!-- 重复下载确认：列出重复项与冲突点，逐条选择继续 / 跳过，也支持一次性统一选择 -->
+  <div class="modal-mask" id="dupMask" hidden>
+    <div class="glass modal dup-modal" role="dialog" aria-modal="true" aria-labelledby="dupTitle">
+      <div class="dup-head">
+        <h3 id="dupTitle">发现重复文件</h3>
+        <button class="close" id="dupClose" type="button" aria-label="关闭">✕</button>
+      </div>
+      <p class="dup-hint" id="dupHint"></p>
+      <div class="dup-tools">
+        <button class="mini" id="dupAllKeep" type="button">全部继续下载</button>
+        <button class="mini" id="dupAllSkip" type="button">全部跳过</button>
+      </div>
+      <div class="dup-list" id="dupList"></div>
+      <div class="dup-actions">
+        <button class="glass-btn" id="dupCancel" type="button">取消</button>
+        <button class="primary" id="dupConfirm" type="button">开始下载</button>
+      </div>
+    </div>
+  </div>
+
   <audio id="audioEl" preload="none"></audio>
 
   <!-- 右下角齿轮 -->

@@ -128,6 +128,15 @@
   const batchCount = $('batchCount');
   const batchClear = $('batchClear');
   const batchDownload = $('batchDownload');
+  /* 重复下载确认框 */
+  const dupMask = $('dupMask');
+  const dupList = $('dupList');
+  const dupHint = $('dupHint');
+  const dupClose = $('dupClose');
+  const dupCancel = $('dupCancel');
+  const dupConfirm = $('dupConfirm');
+  const dupAllKeep = $('dupAllKeep');
+  const dupAllSkip = $('dupAllSkip');
   const player = $('player');
   const playerPlay = $('playerPlay');
   const playerToggle = $('playerToggle');
@@ -901,12 +910,149 @@
   });
   batchDownload.addEventListener('click', () => {
     const picked = currentResults.filter((r) => selectedIds.has(r.id));
-    if (!picked.length) return;
-    downloadBatch(picked);
+    if (!picked.length) {
+      setStatus('还没有选中任何歌曲', 'warn');
+      return;
+    }
+    downloadWithDuplicateCheck(picked);
   });
 
-  /* ---------- 下载详情（坞内，点击展开 / 收起，同播放栏思路） ---------- */
-  /* 面板分三层：当前任务卡（曲名/艺术家/来源/状态/进度/失败原因）→ 批次队列 → 可折叠原始日志 */
+  /* ---------- 重复检测：下载前比对曲库 ---------- */
+  /* 服务端按「文件名 / 标签标题命中」判重，艺术家与专辑作为补充冲突点列出来。
+     有重复时弹确认框：每条可单独选继续/跳过，也能一次性全选。 */
+  const dupState = { rows: [], resolve: null };
+
+  function openDupModal(rows) {
+    dupState.rows = rows;
+    dupState.resolve = null;
+    dupList.innerHTML = rows.map((r, i) => `
+      <div class="dup-row" data-i="${i}" data-mode="skip">
+        <div class="dup-row-main">
+          <div class="dup-row-title">${escapeHtml(r.song.song_name || r.song.name || '(未知)')}
+            <span class="dup-row-artist">${escapeHtml(r.song.singers || r.song.artist || '')}</span>
+          </div>
+          <div class="dup-row-hit">
+            已有：<code>${escapeHtml(r.hits[0].filename)}</code>
+            <span class="dup-tags">${(r.hits[0].conflicts || []).map((c) => `<span class="dup-tag">${escapeHtml(c)}</span>`).join('')}</span>
+          </div>
+          ${r.hits[0].artist || r.hits[0].album ? `<div class="dup-row-meta">库内：${escapeHtml([r.hits[0].artist, r.hits[0].album].filter(Boolean).join(' · '))}${r.hitCount > 1 ? ` · 另有 ${r.hitCount - 1} 个文件命中` : ''}</div>` : ''}
+        </div>
+        <label class="dup-switch">
+          <input type="checkbox" class="dup-keep" />
+          <span>继续下载</span>
+        </label>
+      </div>`).join('');
+
+    const total = rows.length;
+    dupHint.textContent = `共 ${total} 首与曲库重复，默认全部跳过；需要覆盖的逐条勾选「继续下载」。`;
+    dupList.querySelectorAll('.dup-row').forEach((row) => {
+      const box = row.querySelector('.dup-keep');
+      const sync = () => {
+        row.dataset.mode = box.checked ? 'keep' : 'skip';
+        row.classList.toggle('keep', box.checked);
+      };
+      box.addEventListener('change', sync);
+      /* 点整行也能切换，手机上不用瞄准小方框 */
+      row.addEventListener('click', (e) => {
+        if (e.target === box || e.target.closest('.dup-switch')) return;
+        box.checked = !box.checked;
+        sync();
+      });
+    });
+    dupMask.hidden = false;
+    dupMask.classList.add('show');
+    const first = dupList.querySelector('.dup-keep');
+    if (first) first.focus();
+  }
+
+  function closeDupModal(choice) {
+    dupMask.classList.remove('show');
+    dupMask.hidden = true;
+    const rows = dupState.rows.map((r, i) => {
+      const row = dupList.querySelector(`.dup-row[data-i="${i}"]`);
+      const keep = !!(row && row.dataset.mode === 'keep');
+      return { song: r.song, keep };
+    });
+    if (typeof dupState.resolve === 'function') dupState.resolve(choice === 'cancel' ? null : rows);
+    dupState.resolve = null;
+    dupState.rows = [];
+  }
+
+  dupClose.addEventListener('click', () => closeDupModal('cancel'));
+  dupCancel.addEventListener('click', () => closeDupModal('cancel'));
+  dupAllKeep.addEventListener('click', () => {
+    dupList.querySelectorAll('.dup-row').forEach((row) => {
+      row.querySelector('.dup-keep').checked = true;
+      row.dataset.mode = 'keep';
+      row.classList.add('keep');
+    });
+  });
+  dupAllSkip.addEventListener('click', () => {
+    dupList.querySelectorAll('.dup-row').forEach((row) => {
+      row.querySelector('.dup-keep').checked = false;
+      row.dataset.mode = 'skip';
+      row.classList.remove('keep');
+    });
+  });
+  dupConfirm.addEventListener('click', () => closeDupModal('ok'));
+  dupMask.addEventListener('click', (e) => { if (e.target === dupMask) closeDupModal('cancel'); });
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && !dupMask.hidden) closeDupModal('cancel');
+  });
+
+  /* 问服务端这若干条里哪些重复；返回 {dups: [...], error}，fail-open（查不到就照常下载） */
+  async function checkDuplicates(songs) {
+    const ids = songs.map((s) => s.id).filter(Boolean);
+    if (!ids.length) return { dups: [] };
+    try {
+      const resp = await fetch('/api/check-duplicates', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids }),
+      });
+      if (!resp.ok) return { dups: [], error: 'HTTP ' + resp.status };
+      const data = await resp.json();
+      const byId = new Map((data.items || []).map((x) => [x.id, x]));
+      const dups = [];
+      songs.forEach((s) => {
+        const r = byId.get(s.id);
+        if (r && r.duplicate && r.hits && r.hits.length) {
+          dups.push({ song: s, hits: r.hits, hitCount: r.hit_count || r.hits.length });
+        }
+      });
+      return { dups, libraryCount: data.library_count || 0 };
+    } catch (err) {
+      return { dups: [], error: String((err && err.message) || err) };
+    }
+  }
+
+  /* 把查重 + 确认框合成一步：返回需要继续下载的歌曲列表（被跳过的返回 skipped 数量） */
+  async function resolveDuplicates(songs) {
+    const { dups, error, libraryCount } = await checkDuplicates(songs);
+    if (error) {
+      dlLog(`重复检测不可用（${error}），按原计划下载`, 'dim');
+      return { proceed: songs, skipped: 0 };
+    }
+    if (!dups.length) {
+      if (libraryCount) dlLog(`重复检测：${songs.length} 首与曲库 ${libraryCount} 个文件比对，无重复`, 'dim');
+      return { proceed: songs, skipped: 0 };
+    }
+    dlLog(`重复检测：${dups.length} 首命中曲库`, 'head');
+    const choice = await new Promise((resolve) => {
+      dupState.resolve = resolve;
+      openDupModal(dups);
+    });
+    if (!choice) return { proceed: null, skipped: 0 };      // 用户取消整次下载
+    const keep = new Set(choice.filter((c) => c.keep).map((c) => c.song.id));
+    const proceed = songs.filter((s) => !dups.some((d) => d.song.id === s.id) || keep.has(s.id));
+    const skipped = songs.length - proceed.length;
+    dups.forEach((d) => {
+      if (!keep.has(d.song.id)) dlLog(`跳过重复：${d.song.song_name || ''}（${(d.hits[0].conflicts || []).join('/')}）`, 'dim');
+    });
+    return { proceed, skipped };
+  }
+
+  /* ---------- 下载详情（坞内，点击展开 / 收起，同播放栏思路） ---------- */  /* 面板分三层：当前任务卡（曲名/艺术家/来源/状态/进度/失败原因）→ 批次队列 → 可折叠原始日志 */
   const DL_STATUS = {
     queued: { text: '排队中', cls: 'queued' },
     running: { text: '下载中', cls: 'running' },
@@ -1494,7 +1640,7 @@
         box.checked = !box.checked;
         togglePick(box.dataset.id, box.checked);
       });
-      card.querySelector('.dl').addEventListener('click', (e) => downloadOne(r, e.currentTarget));
+      card.querySelector('.dl').addEventListener('click', (e) => downloadWithDuplicateCheck([r], e.currentTarget));
       if (selectedIds.has(r.id)) card.classList.add('picked');
       resultsEl.appendChild(card);
     });
@@ -1616,6 +1762,30 @@
     }
   }
 
+  /* 单条下载：先查重（有重复弹确认框），再走流式下载；返回 {ok, saved, error, skipped} */
+  async function downloadWithDuplicateCheck(songs, btn) {
+    try {
+      const { proceed, skipped } = await resolveDuplicates(songs);
+      if (!proceed) return { ok: false, cancelled: true, saved: null, error: '', skipped: 0 };
+      if (!proceed.length) {
+        setStatus('已跳过全部重复项', 'warn');
+        return { ok: false, saved: null, error: '', skipped };
+      }
+      if (songs.length === 1) {
+        const res = await downloadOne(proceed[0], btn || null);
+        return { ...res, skipped };
+      }
+      const stats = await downloadBatch(proceed);
+      return { ok: true, saved: null, error: '', skipped, stats };
+    } catch (err) {
+      /* 任何意外都别静默：写进状态栏与下载面板，避免「点了没反应」 */
+      const msg = String((err && err.message) || err);
+      setStatus('下载启动失败：' + msg, 'err');
+      dlLog('✗ 下载启动失败：' + msg, 'err');
+      return { ok: false, saved: null, error: msg, skipped: 0 };
+    }
+  }
+
   /* 批量下载：串行执行，避免并发抢带宽与面板错乱；每条各自更新队列行 */
   async function downloadBatch(list) {
     const songs = (list || []).filter((s) => s && s.id);
@@ -1648,6 +1818,7 @@
     dlRefreshStatus();
     dlConsoleSub.textContent = `完成 ${ok} · 失败 ${bad} · 共 ${songs.length}`;
     setStatus(`批量下载结束：成功 ${ok} / ${songs.length}`, bad ? 'warn' : 'ok');
+    return { ok, bad, total: songs.length };
   }
 
   /* ---------- 初始化 ---------- */

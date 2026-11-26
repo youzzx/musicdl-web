@@ -30,6 +30,7 @@ import shutil
 import sys
 import threading
 import time
+import unicodedata
 import urllib.error
 import urllib.request
 from concurrent.futures import ThreadPoolExecutor
@@ -473,6 +474,168 @@ def _parse_size_bytes(s):
         return 0
     mul = {"B": 1, "KB": 1024, "MB": 1024 ** 2, "GB": 1024 ** 3, "TB": 1024 ** 4}
     return int(n * mul.get((m.group(2) or "B").upper(), 1))
+
+
+# ---------------------------------------------------------------------------
+# 重复检测：下载前比对 OUTPUT_DIR 里已有的音频文件与标签
+# ---------------------------------------------------------------------------
+# 判定口径（用户定）：**文件名或标题命中为主**；艺术家、专辑只作为「同一首歌」的补充冲突点
+# 一并列出，单独命中不算重复（避免「同歌手不同歌」被整片误判）。
+AUDIO_EXTS = (".mp3", ".flac", ".m4a", ".mp4", ".m4b", ".aac", ".wav",
+              ".aiff", ".aif", ".ogg", ".opus", ".ape", ".wv", ".dsf")
+_LIB_CACHE = {"at": 0.0, "sig": None, "items": []}
+_LIB_LOCK = threading.Lock()
+_LIB_TTL = 5.0          # 秒：下载落盘后很快要复查，缓存太短会反复扫全目录
+
+
+def _norm_text(s):
+    """比对用的规范化：全半角统一、大小写折叠、去掉括号补充与多余标点空白。"""
+    t = str(s or "")
+    t = unicodedata.normalize("NFKC", t).casefold()
+    t = re.sub(r"[\(（\[【].*?[\)）\]】]", " ", t)      # (Live) （伴奏）[Remix] 这类后缀
+    t = re.sub(r"[\s\u3000]+", " ", t)
+    t = re.sub(r"[!-/:-@\[-`{-~·・、，。！？；：“”‘’《》〈〉「」]", " ", t)
+    return re.sub(r"\s+", " ", t).strip()
+
+
+def _lib_signature():
+    """目录指纹：文件名 + 大小 + mtime。变了才重建索引，否则每首歌都读标签太慢。"""
+    root = os.path.abspath(OUTPUT_DIR)
+    parts = []
+    try:
+        for dirpath, _dirs, files in os.walk(root):
+            for name in files:
+                if not name.lower().endswith(AUDIO_EXTS):
+                    continue
+                p = os.path.join(dirpath, name)
+                try:
+                    st = os.stat(p)
+                except OSError:
+                    continue
+                parts.append((p, st.st_size, int(st.st_mtime)))
+    except Exception:  # noqa: BLE001
+        return None
+    parts.sort()
+    return tuple(parts)
+
+
+def _build_library():
+    """扫 OUTPUT_DIR 建曲库索引：每条含路径、文件名、标签里的标题/艺术家/专辑。"""
+    sig = _lib_signature()
+    if sig is None:
+        return []
+    items = []
+    for path, size, mtime in sig:
+        stem, ext = os.path.splitext(os.path.basename(path))
+        tags = {}
+        try:
+            tags = (tagger.read_tags(path) or {}).get("tags") or {}
+        except Exception:  # noqa: BLE001
+            tags = {}
+        title = str(tags.get("title") or "").strip()
+        artist = str(tags.get("artist") or "").strip()
+        album = str(tags.get("album") or "").strip()
+        # 没标签的旧文件按「标题_歌手」的落盘命名反推
+        if not title and "_" in stem:
+            guess_t, _, guess_a = stem.partition("_")
+            title, artist = guess_t.strip(), guess_a.strip()
+        items.append({
+            "path": path,
+            "filename": os.path.basename(path),
+            "stem": stem,
+            "ext": ext,
+            "size": size,
+            "mtime": mtime,
+            "title": title or stem,
+            "artist": artist,
+            "album": album,
+        })
+    return items
+
+
+def library_index():
+    """带 TTL 与目录指纹缓存的曲库索引。"""
+    sig = _lib_signature()
+    now = time.time()
+    with _LIB_LOCK:
+        cached = _LIB_CACHE
+        if cached["items"] and cached["sig"] == sig and (now - cached["at"]) < _LIB_TTL:
+            return list(cached["items"])
+        items = _build_library()
+        _LIB_CACHE.update({"at": now, "sig": _lib_signature(), "items": items})
+        return list(items)
+
+
+def _conflicts_for(song, item):
+    """一首待下载的歌 vs 一条曲库记录：返回命中的冲突点列表（空列表 = 不算重复）。
+
+    收敛口径：文件名或标签标题命中才算重复；艺术家/专辑只在已经判为重复时补列，
+    用来解释「为什么像同一首」。
+    """
+    want_title = _norm_text(getattr(song, "song_name", "") or getattr(song, "name", ""))
+    want_artist = _norm_text(getattr(song, "singers", "") or getattr(song, "artist", ""))
+    want_album = _norm_text(getattr(song, "album", ""))
+    conf = []
+
+    # 1) 文件名命中：现有文件是「标题_歌手.ext」，按标题段比对，并加长度比例约束，
+    #    免得「Where」这种短词把「Where Did You Go」整片吃掉
+    stem_n = _norm_text(item["stem"])
+    title_part = stem_n.split("_")[0].strip() if "_" in stem_n else stem_n
+    if want_title and len(want_title) >= 2:
+        if title_part == want_title:
+            conf.append("文件名")
+        elif len(want_title) >= 4 and title_part:
+            longer, shorter = (title_part, want_title) if len(title_part) >= len(want_title) else (want_title, title_part)
+            if shorter in longer and len(shorter) / len(longer) >= 0.55:
+                conf.append("文件名")
+    # 2) 标签标题命中：完全相等才算（避免「夜曲」命中「夜曲2」这种拖累）
+    item_title = _norm_text(item["title"])
+    if want_title and item_title and want_title == item_title:
+        if "标签标题" not in conf:
+            conf.append("标签标题")
+    if not conf:
+        return []
+
+    # 已判重复：把艺术家/专辑的一致情况也列出来，方便人工判断是不是同一版本
+    item_artist = _norm_text(item["artist"])
+    item_album = _norm_text(item["album"])
+    if want_artist and item_artist and (want_artist == item_artist
+                                        or want_artist in item_artist
+                                        or item_artist in want_artist):
+        conf.append("艺术家")
+    if want_album and item_album and want_album == item_album:
+        conf.append("专辑")
+    return conf
+
+
+def check_duplicates(pairs):
+    """批量比对：pairs 是 [(结果 id, SongInfo), ...]，返回每条的重复情况。
+
+    id 来自搜索缓存（SongInfo 自己没有 id），前端拿它把结论对回卡片。
+    """
+    items = library_index()
+    out = []
+    for rid, song in pairs:
+        hits = []
+        for item in items:
+            conf = _conflicts_for(song, item)
+            if conf:
+                hits.append({
+                    "filename": item["filename"],
+                    "path": item["path"],
+                    "size": item["size"],
+                    "title": item["title"],
+                    "artist": item["artist"],
+                    "album": item["album"],
+                    "conflicts": conf,
+                })
+        out.append({
+            "id": rid,
+            "duplicate": bool(hits),
+            "hits": hits[:5],          # 同一首命中多个文件时只列前 5 条，够判断了
+            "hit_count": len(hits),
+        })
+    return out
 
 
 def _watch_size(root, since):
@@ -1084,6 +1247,8 @@ class Handler(BaseHTTPRequestHandler):
             self._download(body)
         elif path == "/api/download/stream":
             self._download_stream(body)
+        elif path == "/api/check-duplicates":
+            self._check_duplicates(body)
         elif path == "/api/cookies":
             self._save_cookies(body)
         elif path == "/api/ai":
@@ -1279,6 +1444,44 @@ class Handler(BaseHTTPRequestHandler):
                 cfg[k] = incoming[k]
         ok, msg = translator.test_config(cfg)
         self._send_json(200 if ok else 400, {"ok": ok, "message": msg})
+
+    def _check_duplicates(self, body):
+        """下载前查重：前端把待下载条目的 id 列表发来，服务端比对曲库。
+
+        返回 {items: [{id, duplicate, hits, hit_count}], library_count}。
+        曲库就是 MUSICDL_OUTPUT 下的音频文件（文件名 / 标签标题命中为主）。
+        """
+        ids = body.get("ids")
+        if ids is None and body.get("id"):
+            ids = [body.get("id")]
+        ids = [str(i) for i in (ids or [])]
+        if not ids:
+            self._send_json(400, {"error": "ids 必填"})
+            return
+        pairs = []
+        missing = []
+        with SEARCH_CACHE_LOCK:
+            for rid in ids:
+                song = SEARCH_CACHE.get(rid)
+                if song is None:
+                    missing.append(rid)
+                else:
+                    pairs.append((rid, song))
+        try:
+            items = check_duplicates(pairs)
+            lib_count = len(library_index())
+        except Exception as exc:  # noqa: BLE001
+            self._send_json(500, {"error": f"查重异常：{type(exc).__name__}: {exc}"})
+            return
+        payload = {
+            "items": items,
+            "library_count": lib_count,
+            "output_dir": OUTPUT_DIR,
+            "missing": missing,
+        }
+        if missing:
+            payload["warning"] = "部分结果已过期，请重新搜索后再下载"
+        self._send_json(200, payload)
 
     def _download(self, body):
         if not MUSICDL_AVAILABLE:
