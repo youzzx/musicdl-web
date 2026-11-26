@@ -923,8 +923,9 @@
   const dupState = { rows: [], resolve: null };
 
   function openDupModal(rows) {
+    /* 注意：这里不要动 dupState.resolve —— 调用方是「先拿 resolve 再开框」，
+       在这里清掉它会让 await 永远不返回（点开始下载后整条链路静默挂起）。 */
     dupState.rows = rows;
-    dupState.resolve = null;
     dupList.innerHTML = rows.map((r, i) => `
       <div class="dup-row" data-i="${i}" data-mode="skip">
         <div class="dup-row-main">
@@ -1039,8 +1040,9 @@
     }
     dlLog(`重复检测：${dups.length} 首命中曲库`, 'head');
     const choice = await new Promise((resolve) => {
-      dupState.resolve = resolve;
+      /* 先开框（openDupModal 不碰 resolve），再挂 resolve，顺序反过来会被清空 */
       openDupModal(dups);
+      dupState.resolve = resolve;
     });
     if (!choice) return { proceed: null, skipped: 0 };      // 用户取消整次下载
     const keep = new Set(choice.filter((c) => c.keep).map((c) => c.song.id));
