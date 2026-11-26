@@ -1512,10 +1512,9 @@ button.dock-circle:active {
 .dl-panel-head { display: flex; align-items: center; gap: 8px; }
 .dl-panel-status { font-size: 12.5px; font-weight: 600; color: var(--text); }
 .dl-panel-body {
-  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
   font-size: 12.5px;
-  line-height: 1.75;
-  max-height: 200px;
+  line-height: 1.6;
+  max-height: 260px;
   overflow-y: auto;
   /* 滚动条留出固定位置，日志变长/变短时文字不会左右跳 */
   scrollbar-gutter: stable;
@@ -1545,6 +1544,232 @@ button.dock-circle:active {
 /* 结果行操作区 */
 .result .result-actions { display: flex; gap: 6px; flex-shrink: 0; }
 .result .glass-btn.pv.active { background: var(--accent-soft); border-color: rgba(10, 132, 255, 0.35); }
+
+/* ---------- 批量选择 ---------- */
+/* 吸顶工具条：滚动看结果时始终能看到已选数量与批量下载入口 */
+.batch-bar {
+  position: sticky;
+  top: 10px;
+  z-index: 6;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 13px;
+  border-radius: 14px;
+  font-size: 13px;
+}
+.batch-bar[hidden] { display: none; }
+.batch-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-weight: 600;
+  cursor: pointer;
+  user-select: none;
+}
+.batch-check input { width: 15px; height: 15px; accent-color: var(--accent); cursor: pointer; }
+.batch-count {
+  margin-left: auto;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: rgba(20, 20, 24, 0.72);
+  font-variant-numeric: tabular-nums;
+}
+.batch-bar .mini:disabled,
+.batch-bar .primary.small:disabled { opacity: 0.42; cursor: not-allowed; }
+
+/* 结果卡片上的复选框：与封面对齐、整行点击也能切换 */
+.pick-wrap {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 22px;
+  height: 42px;
+  cursor: pointer;
+}
+.pick-wrap input {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+.result.picked {
+  background: var(--accent-soft);
+  box-shadow: inset 0 0 0 1px rgba(10, 132, 255, 0.42);
+}
+
+/* ---------- 下载面板：信息层级 ---------- */
+.dl-head-text { display: flex; flex-direction: column; min-width: 0; flex: 1; }
+.dl-panel-sub {
+  font-size: 11.5px;
+  color: rgba(20, 20, 24, 0.55);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.dl-log-toggle { margin-left: auto; flex-shrink: 0; }
+.dl-log-toggle.on { background: var(--accent-soft); border-color: rgba(10, 132, 255, 0.35); }
+
+.dl-panel-body { display: flex; flex-direction: column; gap: 9px; }
+
+/* 当前任务卡：曲名最大 → 艺术家/来源次之 → 进度 → 状态文案 → 失败原因独占一行 */
+.dl-task {
+  border-radius: 12px;
+  padding: 10px 11px;
+  background: rgba(255, 255, 255, 0.62);
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.05);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.dl-task[hidden] { display: none; }
+.dlt-top { display: flex; align-items: flex-start; gap: 8px; }
+.dlt-titles { min-width: 0; flex: 1; }
+.dlt-title {
+  font-size: 14px;
+  font-weight: 680;
+  line-height: 1.32;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.dlt-sub {
+  margin-top: 2px;
+  font-size: 12px;
+  font-weight: 550;
+  color: rgba(20, 20, 24, 0.62);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.dlt-dot { margin: 0 5px; opacity: 0.55; }
+.dlt-badge,
+.dlq-badge {
+  flex-shrink: 0;
+  padding: 1.5px 7px;
+  border-radius: 6px;
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+}
+.dlq-badge.queued, .dlt-badge.queued { color: rgba(20,20,24,0.62); background: rgba(120,120,128,0.16); }
+.dlq-badge.running, .dlt-badge.running { color: #0a5cc4; background: rgba(10,132,255,0.16); }
+.dlq-badge.done, .dlt-badge.done { color: #0b6b3a; background: rgba(52,199,89,0.18); }
+.dlq-badge.fail, .dlt-badge.fail { color: #9b1c1c; background: rgba(255,59,48,0.16); }
+.dlq-badge.skipped, .dlt-badge.skipped { color: rgba(20,20,24,0.5); background: rgba(120,120,128,0.12); }
+
+.dlt-progress { display: flex; align-items: center; gap: 8px; }
+.dlt-bar {
+  flex: 1;
+  height: 6px;
+  border-radius: 4px;
+  background: rgba(120, 120, 128, 0.18);
+  overflow: hidden;
+}
+.dlt-fill {
+  width: 0;
+  height: 100%;
+  border-radius: 4px;
+  background: var(--accent);
+  transition: width 0.28s ease;
+}
+.dl-task[data-status="done"] .dlt-fill { background: #34c759; }
+.dl-task[data-status="fail"] .dlt-fill { background: #ff3b30; }
+.dlt-pct {
+  flex-shrink: 0;
+  min-width: 34px;
+  text-align: right;
+  font-size: 11.5px;
+  font-weight: 650;
+  color: rgba(20, 20, 24, 0.7);
+  font-variant-numeric: tabular-nums;
+}
+.dlt-stage {
+  font-size: 11.5px;
+  color: rgba(20, 20, 24, 0.6);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.dlt-error {
+  font-size: 11.5px;
+  line-height: 1.5;
+  color: #9b1c1c;
+  background: rgba(255, 59, 48, 0.09);
+  border-radius: 8px;
+  padding: 6px 8px;
+  word-break: break-word;
+}
+.dlt-error b { margin-right: 6px; font-weight: 700; }
+
+/* 批次队列：每条一行，当前任务高亮 */
+.dl-queue { display: flex; flex-direction: column; gap: 2px; }
+.dlq-row {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 5px 6px;
+  border-radius: 8px;
+  font-size: 12px;
+}
+.dlq-row.active { background: rgba(10, 132, 255, 0.08); }
+.dlq-idx {
+  flex-shrink: 0;
+  width: 14px;
+  text-align: right;
+  color: rgba(20, 20, 24, 0.42);
+  font-variant-numeric: tabular-nums;
+}
+.dlq-main { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1; }
+.dlq-title {
+  font-weight: 600;
+  color: rgba(20, 20, 24, 0.82);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.dlq-meta {
+  font-size: 11px;
+  color: rgba(20, 20, 24, 0.55);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.dlq-bar {
+  height: 3px;
+  border-radius: 2px;
+  background: rgba(120, 120, 128, 0.16);
+  overflow: hidden;
+}
+.dlq-fill {
+  display: block;
+  width: 0;
+  height: 100%;
+  border-radius: 2px;
+  background: var(--accent);
+  transition: width 0.28s ease;
+}
+.dlq-row[data-status="done"] .dlq-fill { background: #34c759; }
+.dlq-row[data-status="fail"] .dlq-fill { background: #ff3b30; }
+
+/* 折叠的原始日志：排查时才展开，不挤占正常阅读空间 */
+.dl-raw {
+  max-height: 150px;
+  overflow-y: auto;
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 11.5px;
+  line-height: 1.7;
+  scrollbar-gutter: stable;
+  border-top: 1px dashed rgba(0, 0, 0, 0.12);
+  padding-top: 7px;
+}
+.dl-raw[hidden] { display: none; }
+.dl-raw .log-line { color: rgba(20, 20, 24, 0.7); animation: none; }
+.dl-raw .log-line .t { margin-right: 7px; color: rgba(20, 20, 24, 0.42); }
 
 /* ---------- 动画 ---------- */
 @keyframes cardIn {

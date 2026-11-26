@@ -214,6 +214,18 @@
       <div class="console-body" id="consoleBody"></div>
     </section>
 
+    <!-- 批量选择工具条：搜索出结果后出现；全选 / 反选 / 已选数量 / 下载所选 -->
+    <div class="glass batch-bar" id="batchBar" hidden>
+      <label class="batch-check" for="batchAll">
+        <input type="checkbox" id="batchAll" />
+        <span>全选</span>
+      </label>
+      <button class="mini" id="batchInvert" type="button">反选</button>
+      <span class="batch-count" id="batchCount">已选 0 项</span>
+      <button class="mini" id="batchClear" type="button">清空</button>
+      <button class="primary small" id="batchDownload" type="button" disabled>下载所选</button>
+    </div>
+
     <!-- 结果区 -->
     <section id="results" class="results" aria-live="polite"></section>
   </main>
@@ -239,9 +251,17 @@
             <circle class="dl-ring-bg" cx="18" cy="18" r="15.9155"></circle>
             <circle class="dl-ring-fg" id="dlRingFg" cx="18" cy="18" r="15.9155"></circle>
           </svg>
-          <span class="dl-panel-status" id="dlConsoleStatus">就绪</span>
+          <div class="dl-head-text">
+            <span class="dl-panel-status" id="dlConsoleStatus">就绪</span>
+            <span class="dl-panel-sub" id="dlConsoleSub">等待下载任务</span>
+          </div>
+          <button class="mini dl-log-toggle" id="dlLogToggle" type="button" aria-expanded="false">日志</button>
         </div>
-        <div class="dl-panel-body" id="dlConsoleBody"></div>
+        <div class="dl-panel-body" id="dlConsoleBody">
+          <div class="dl-task" id="dlTaskCard" hidden></div>
+          <div class="dl-queue" id="dlQueue"></div>
+          <div class="dl-raw" id="dlRawLog" hidden></div>
+        </div>
       </div>
     </div>
 

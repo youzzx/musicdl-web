@@ -114,7 +114,20 @@
   const dlConsoleHead = $('dlConsoleHead');
   const dlConsoleBody = $('dlConsoleBody');
   const dlConsoleStatus = $('dlConsoleStatus');
+  const dlConsoleSub = $('dlConsoleSub');
   const dlRingFg = $('dlRingFg');
+  /* 下载面板的三块：当前任务卡 / 批次队列 / 折叠的原始日志 */
+  const dlTaskCard = $('dlTaskCard');
+  const dlQueue = $('dlQueue');
+  const dlRawLog = $('dlRawLog');
+  const dlLogToggle = $('dlLogToggle');
+  /* 批量选择工具条 */
+  const batchBar = $('batchBar');
+  const batchAll = $('batchAll');
+  const batchInvert = $('batchInvert');
+  const batchCount = $('batchCount');
+  const batchClear = $('batchClear');
+  const batchDownload = $('batchDownload');
   const player = $('player');
   const playerPlay = $('playerPlay');
   const playerToggle = $('playerToggle');
@@ -838,20 +851,91 @@
     setConsoleCollapsed(true);      // 默认收缩，需要时点表头展开
   }
 
+  /* ---------- 批量选择：复选框状态 ---------- */
+  /* 结果是每次搜索重绘的数组，选中状态单独存 id 集合，重绘不丢选择 */
+  let currentResults = [];          // 最近一次搜索结果（已排序）
+  const resultMap = new Map();      // id -> 结果对象
+  const selectedIds = new Set();
+
+  function updateBatchBar() {
+    const total = currentResults.length;
+    const n = selectedIds.size;
+    batchBar.hidden = total === 0;
+    batchCount.textContent = n ? `已选 ${n} / ${total} 项` : `已选 0 项（共 ${total} 项）`;
+    batchDownload.disabled = n === 0;          // 未选中任何项时入口保持置灰
+    batchAll.checked = total > 0 && n === total;
+    batchAll.indeterminate = n > 0 && n < total;
+    batchClear.disabled = n === 0;
+    batchInvert.disabled = total === 0;
+    /* 卡片上的勾选态与集合保持一致（重绘/全选/反选都走这里刷新） */
+    resultsEl.querySelectorAll('.result').forEach((card) => {
+      const box = card.querySelector('.pick');
+      if (!box) return;
+      const on = selectedIds.has(box.dataset.id);
+      box.checked = on;
+      card.classList.toggle('picked', on);
+    });
+  }
+
+  function togglePick(id, on) {
+    if (!id) return;
+    if (on) selectedIds.add(id); else selectedIds.delete(id);
+    updateBatchBar();
+  }
+
+  batchAll.addEventListener('change', () => {
+    if (batchAll.checked) currentResults.forEach((r) => selectedIds.add(r.id));
+    else selectedIds.clear();
+    updateBatchBar();
+  });
+  batchInvert.addEventListener('click', () => {
+    currentResults.forEach((r) => {
+      if (selectedIds.has(r.id)) selectedIds.delete(r.id);
+      else selectedIds.add(r.id);
+    });
+    updateBatchBar();
+  });
+  batchClear.addEventListener('click', () => {
+    selectedIds.clear();
+    updateBatchBar();
+  });
+  batchDownload.addEventListener('click', () => {
+    const picked = currentResults.filter((r) => selectedIds.has(r.id));
+    if (!picked.length) return;
+    downloadBatch(picked);
+  });
+
   /* ---------- 下载详情（坞内，点击展开 / 收起，同播放栏思路） ---------- */
-  let dlActive = 0;
+  /* 面板分三层：当前任务卡（曲名/艺术家/来源/状态/进度/失败原因）→ 批次队列 → 可折叠原始日志 */
+  const DL_STATUS = {
+    queued: { text: '排队中', cls: 'queued' },
+    running: { text: '下载中', cls: 'running' },
+    done: { text: '已完成', cls: 'done' },
+    fail: { text: '失败', cls: 'fail' },
+    skipped: { text: '已跳过重复', cls: 'skipped' },
+  };
+  let dlTasks = [];                 // 本批次任务：[{id,title,artist,source,status,pct,stage,error,fname}]
+  let dlCurrentId = null;
 
   function setDlOpen(open) {
     dlConsole.classList.toggle('open', open);
     dlConsoleHead.setAttribute('aria-expanded', open ? 'true' : 'false');
   }
   dlConsoleHead.addEventListener('click', () => setDlOpen(!dlConsole.classList.contains('open')));
+  dlLogToggle.addEventListener('click', () => {
+    const open = dlRawLog.hidden;
+    dlRawLog.hidden = !open;
+    dlLogToggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+    dlLogToggle.classList.toggle('on', open);
+    if (open) dlRawLog.scrollTop = dlRawLog.scrollHeight;
+  });
 
   function setDlConsoleRing(pct) {
     const p = Math.max(0, Math.min(100, Number(pct) || 0));
     dlRingFg.style.strokeDashoffset = String(100 - p);   // 周长按 100 设计
   }
 
+  /* 原始日志：逐行 append，自动滚到底。默认折叠，需要排查时才展开 */
   function dlLog(text, cls) {
     const row = document.createElement('div');
     row.className = 'log-line' + (cls ? ' ' + cls : '');
@@ -861,15 +945,130 @@
     const s = document.createElement('span');
     s.textContent = text;
     row.append(t, s);
-    dlConsoleBody.appendChild(row);
-    dlConsoleBody.scrollTop = dlConsoleBody.scrollHeight;
+    dlRawLog.appendChild(row);
+    if (!dlRawLog.hidden) dlRawLog.scrollTop = dlRawLog.scrollHeight;
   }
 
-  function dlConsoleReset() {
-    dlConsoleBody.innerHTML = '';
+  function dlResetBatch() {
+    dlTasks = [];
+    dlCurrentId = null;
+    dlQueue.innerHTML = '';
+    dlTaskCard.hidden = true;
+    dlTaskCard.innerHTML = '';
+    dlRawLog.innerHTML = '';
+    dlRawLog.hidden = true;
+    dlLogToggle.classList.remove('on');
+    dlLogToggle.setAttribute('aria-expanded', 'false');
+    dlConsoleBody.scrollTop = 0;
     dlConsole.classList.add('show');     // 有下载时才出现在坞里
     setDlOpen(true);                     // 默认展开，方便直接看到过程
     setDlConsoleRing(0);
+    dlRefreshStatus();
+  }
+
+  function dlTask(id) {
+    return dlTasks.find((t) => t.id === id) || null;
+  }
+
+  /* 队列行：每条任务一行，含状态徽标与细进度条；当前任务高亮 */
+  function dlRenderQueue() {
+    dlQueue.innerHTML = '';
+    dlTasks.forEach((t, i) => {
+      const row = document.createElement('div');
+      row.className = 'dlq-row' + (t.id === dlCurrentId ? ' active' : '');
+      row.dataset.status = t.status;
+      const badge = DL_STATUS[t.status] || DL_STATUS.queued;
+      row.innerHTML = `
+        <span class="dlq-idx">${i + 1}</span>
+        <span class="dlq-main">
+          <span class="dlq-title" title="${escapeHtml(t.title)}">${escapeHtml(t.title)}</span>
+          <span class="dlq-meta">${escapeHtml(t.artist || '未知艺术家')} · ${escapeHtml(zh(t.source))}</span>
+          <span class="dlq-bar"><span class="dlq-fill" style="width:${Math.max(0, Math.min(100, t.pct || 0))}%"></span></span>
+        </span>
+        <span class="dlq-badge ${badge.cls}">${badge.text}</span>`;
+      if (t.status === 'fail' && t.error) row.title = t.error;
+      dlQueue.appendChild(row);
+    });
+  }
+
+  /* 当前任务卡：一眼能读到的信息层级（曲名最大、状态与进度其次、失败原因独占一行） */
+  function dlRenderTask() {
+    const t = dlTask(dlCurrentId);
+    if (!t) { dlTaskCard.hidden = true; dlTaskCard.innerHTML = ''; return; }
+    const badge = DL_STATUS[t.status] || DL_STATUS.queued;
+    dlTaskCard.hidden = false;
+    dlTaskCard.dataset.status = t.status;
+    dlTaskCard.innerHTML = `
+      <div class="dlt-top">
+        <div class="dlt-titles">
+          <div class="dlt-title" title="${escapeHtml(t.title)}">${escapeHtml(t.title)}</div>
+          <div class="dlt-sub">${escapeHtml(t.artist || '未知艺术家')}<span class="dlt-dot">·</span>${escapeHtml(zh(t.source))}</div>
+        </div>
+        <span class="dlt-badge ${badge.cls}">${badge.text}</span>
+      </div>
+      <div class="dlt-progress">
+        <div class="dlt-bar"><div class="dlt-fill" id="dlTaskFill"></div></div>
+        <span class="dlt-pct" id="dlTaskPct">0%</span>
+      </div>
+      <div class="dlt-stage" id="dlTaskStage">${escapeHtml(t.stage || '等待开始')}</div>
+      ${t.status === 'fail' && t.error ? `<div class="dlt-error"><b>失败原因</b>${escapeHtml(t.error)}</div>` : ''}`;
+    dlSetPct(t.pct || 0);
+  }
+
+  function dlSetPct(pct) {
+    const t = dlTask(dlCurrentId);
+    if (!t) return;
+    t.pct = Math.max(0, Math.min(100, Number(pct) || 0));
+    const fill = $('dlTaskFill');
+    const label = $('dlTaskPct');
+    if (fill) fill.style.width = t.pct + '%';
+    if (label) label.textContent = t.pct + '%';
+    setDlConsoleRing(t.pct);
+    const row = dlQueue.querySelector('.dlq-row.active .dlq-fill');
+    if (row) row.style.width = t.pct + '%';
+  }
+
+  function dlSetStage(pct, stage) {
+    const t = dlTask(dlCurrentId);
+    if (!t) return;
+    if (typeof pct === 'number') dlSetPct(pct);
+    if (stage) {
+      t.stage = stage;
+      const el = $('dlTaskStage');
+      if (el) el.textContent = stage;
+    }
+  }
+
+  function dlSetStatus(id, status, patch) {
+    const t = dlTask(id);
+    if (!t) return;
+    t.status = status;
+    Object.assign(t, patch || {});
+    if (id === dlCurrentId) dlRenderTask();
+    dlRenderQueue();
+    dlRefreshStatus();
+  }
+
+  /* 头部总状态：N 个完成 / N 个失败 / 第 i/N 个下载中 */
+  function dlRefreshStatus() {
+    const total = dlTasks.length;
+    const done = dlTasks.filter((t) => t.status === 'done').length;
+    const fail = dlTasks.filter((t) => t.status === 'fail').length;
+    const skip = dlTasks.filter((t) => t.status === 'skipped').length;
+    const running = dlTasks.find((t) => t.status === 'running');
+    if (!total) {
+      dlConsoleStatus.textContent = '就绪';
+      dlConsoleSub.textContent = '等待下载任务';
+      return;
+    }
+    const idx = running ? dlTasks.indexOf(running) + 1 : 0;
+    const head = running ? `下载中 ${idx}/${total}` : `已结束 ${done + fail + skip}/${total}`;
+    dlConsoleStatus.textContent = head;
+    const bits = [`完成 ${done}`];
+    if (fail) bits.push(`失败 ${fail}`);
+    if (skip) bits.push(`跳过 ${skip}`);
+    dlConsoleSub.textContent = bits.join(' · ');
+    if (!running) setDlConsoleRing(total ? 100 * (done + fail + skip) / total : 0);
   }
 
   /* ---------- 搜索（流式，实时显示运行过程） ---------- */
@@ -886,6 +1085,11 @@
     searchBtn.disabled = true;
     searchBtn.textContent = '搜索中…';
     resultsEl.innerHTML = '';
+    /* 新搜索：旧结果的选中集一并作废，工具条收起 */
+    currentResults = [];
+    resultMap.clear();
+    selectedIds.clear();
+    updateBatchBar();
     consoleReset();
     setStatus('正在搜索 "' + kw + '" …');
 
@@ -1201,15 +1405,25 @@
 
   function renderResults(results, kw) {
     if (!results.length) {
+      currentResults = [];
+      resultMap.clear();
+      selectedIds.clear();
+      updateBatchBar();
       resultsEl.innerHTML = `<div class="glass card empty"><div class="big">🔍</div>没有找到 "${escapeHtml(kw)}" 相关结果</div>`;
       return;
     }
     /* 按文件大小从大到小排序（拿不到大小的排到最后） */
     const ordered = [...results].sort((a, b) => sizeToBytes(b.file_size) - sizeToBytes(a.file_size));
+    currentResults = ordered;
+    resultMap.clear();
+    ordered.forEach((r) => resultMap.set(r.id, r));
+    /* 结果换了：保留仍在本次结果里的选择，其余丢弃 */
+    [...selectedIds].forEach((id) => { if (!resultMap.has(id)) selectedIds.delete(id); });
     resultsEl.innerHTML = '';
     ordered.forEach((r, i) => {
       const card = document.createElement('div');
       card.className = 'glass card result';
+      card.dataset.id = r.id;
       card.style.animationDelay = Math.min(i, 14) * 28 + 'ms';    // 逐条浮现
       const artist = String(r.singers || r.artist || '').trim();
       const ext = String(r.ext || '').replace(/^\./, '').toUpperCase();
@@ -1218,6 +1432,10 @@
       const duration = String(r.duration || '').trim();
       const lossless = LOSSLESS_EXTS.has(ext);
       card.innerHTML = `
+        <label class="pick-wrap" title="选择这首歌">
+          <input type="checkbox" class="pick" data-id="${escapeHtml(r.id)}"
+                 aria-label="选择 ${escapeHtml(r.song_name || r.name || '(未知)')}"${selectedIds.has(r.id) ? ' checked' : ''} />
+        </label>
         <div class="result-art"></div>
         <div class="result-main">
           <div class="result-title">${escapeHtml(r.song_name || r.name || '(未知)')}${artist ? `<span class="result-artist">${escapeHtml(artist)}</span>` : ''}</div>
@@ -1263,9 +1481,24 @@
 
       const pv = card.querySelector('.pv');
       if (pv) pv.addEventListener('click', () => preview(r, pv));
-      card.querySelector('.dl').addEventListener('click', (e) => download(r, e.currentTarget));
+      const pick = card.querySelector('.pick');
+      if (pick) {
+        pick.addEventListener('change', () => togglePick(pick.dataset.id, pick.checked));
+        /* 点复选框本体或标题区域都能选中；点「试听/下载」时不改变选择 */
+        pick.addEventListener('click', (e) => e.stopPropagation());
+      }
+      card.addEventListener('click', (e) => {
+        if (e.target.closest('button, .pick-wrap')) return;
+        const box = card.querySelector('.pick');
+        if (!box) return;
+        box.checked = !box.checked;
+        togglePick(box.dataset.id, box.checked);
+      });
+      card.querySelector('.dl').addEventListener('click', (e) => downloadOne(r, e.currentTarget));
+      if (selectedIds.has(r.id)) card.classList.add('picked');
       resultsEl.appendChild(card);
     });
+    updateBatchBar();
   }
 
   /* ---------- 下载（流式，圆环进度） ---------- */
@@ -1276,34 +1509,44 @@
     fg.style.strokeDashoffset = String(100 - p);     // 周长按 100 设计
   }
 
-  async function download(song, btn) {
-    if (btn && btn.classList.contains('downloading')) return;
-    const label = btn ? btn.querySelector('.btn-text') : null;
+  /* 单条下载：流事件映射到任务卡与队列行，返回 {ok, saved, error}（异常不向外抛，批量才能继续） */
+  async function downloadOne(song, btn, opts = {}) {
+    const id = song.id;
     const title = song.song_name || song.name || '(未知)';
+    const artist = String(song.singers || song.artist || '').trim();
+
+    if (!opts.keepPanel) dlResetBatch();       // 单条下载自己清面板；批量由 downloadBatch 统一清
+    if (!dlTask(id)) {
+      dlTasks.push({ id, title, artist, source: song.source || '',
+                     status: 'running', pct: 0, stage: '准备中', error: '', fname: '' });
+      dlRenderQueue();
+    }
+    dlCurrentId = id;
+    dlSetStatus(id, 'running', { stage: '准备中' });
+    dlLog(`▼ ${title}${artist ? ' — ' + artist : ''}`, 'head');
+
     if (btn) {
       btn.classList.add('downloading');
       btn.disabled = true;
       setDlRing(btn, 0);
     }
+    const label = btn ? btn.querySelector('.btn-text') : null;
     if (label) label.textContent = '下载中';
     setStatus('正在下载：' + title);
-
-    if (dlActive === 0) dlConsoleReset();      // 新一批下载才清空面板
-    dlActive += 1;
-    dlLog(`▼ ${title}${song.singers ? ' — ' + song.singers : ''}`, 'head');
-    dlConsoleStatus.textContent = dlActive > 1 ? `${dlActive} 个下载中` : '准备中…';
 
     let done = null;
     const onEvent = (e) => {
       switch (e.type) {
         case 'phase':
+          dlLog(e.text, 'dim');
+          dlSetStage(null, e.text);
+          break;
         case 'log':
           dlLog(e.text, 'dim');
           break;
         case 'progress':
           if (btn) setDlRing(btn, e.pct);
-          setDlConsoleRing(e.pct);
-          dlConsoleStatus.textContent = `${e.pct}% · ${e.text}`;
+          dlSetStage(e.pct, e.text);
           break;
         case 'fatal':
           throw new Error(e.error || '下载失败');
@@ -1342,14 +1585,13 @@
       }
 
       if (btn) setDlRing(btn, 100);
-      setDlConsoleRing(100);
       const saved = done && done.saved && done.saved[0];
       const fname = saved && saved.save_path ? String(saved.save_path).split(/[\\/]/).pop() : '';
-      dlLog(fname ? `✓ 完成：${fname}${saved.lyrics_embedded ? '（歌词已内置）' : ''}` : '✓ 完成', 'ok');
-      setStatus(fname
-        ? `下载完成：${fname}${saved.lyrics_embedded ? '（歌词已内置）' : ''}`
-        : '下载完成', 'ok');
-
+      dlSetPct(100);
+      dlSetStage(100, saved && saved.lyrics_embedded ? '完成（歌词已内置）' : '完成');
+      dlSetStatus(id, 'done', { pct: 100, fname, stage: '完成' });
+      dlLog(fname ? `✓ 完成：${fname}` : '✓ 完成', 'ok');
+      setStatus(fname ? `下载完成：${fname}` : '下载完成', 'ok');
       if (btn) {
         setTimeout(() => {                            // 让圆环停留一下再复原
           btn.classList.remove('downloading');
@@ -1358,19 +1600,54 @@
           if (label) label.textContent = '下载';
         }, 1500);
       }
+      return { ok: true, saved, error: '' };
     } catch (err) {
-      dlLog('✗ ' + err.message, 'err');
-      setStatus('下载失败：' + err.message, 'err');
+      const msg = String((err && err.message) || err);
+      dlSetStatus(id, 'fail', { error: msg });
+      dlLog('✗ ' + msg, 'err');
+      setStatus('下载失败：' + msg, 'err');
       if (btn) {
         btn.classList.remove('downloading');
         btn.disabled = false;
         setDlRing(btn, 0);
         if (label) label.textContent = '下载';
       }
-    } finally {
-      dlActive = Math.max(0, dlActive - 1);
-      dlConsoleStatus.textContent = dlActive === 0 ? '已完成' : `${dlActive} 个下载中`;
+      return { ok: false, saved: null, error: msg };
     }
+  }
+
+  /* 批量下载：串行执行，避免并发抢带宽与面板错乱；每条各自更新队列行 */
+  async function downloadBatch(list) {
+    const songs = (list || []).filter((s) => s && s.id);
+    if (!songs.length) return;
+    dlResetBatch();
+    songs.forEach((s) => {
+      dlTasks.push({
+        id: s.id,
+        title: s.song_name || s.name || '(未知)',
+        artist: String(s.singers || s.artist || '').trim(),
+        source: s.source || '',
+        status: 'queued', pct: 0, stage: '排队中', error: '', fname: '',
+      });
+    });
+    dlRenderQueue();
+    dlRefreshStatus();
+    setStatus(`批量下载：共 ${songs.length} 首`);
+
+    let ok = 0;
+    let bad = 0;
+    for (let i = 0; i < songs.length; i++) {
+      const s = songs[i];
+      dlConsoleStatus.textContent = `批量下载 ${i + 1}/${songs.length}`;
+      const card = [...resultsEl.querySelectorAll('.result')].find((c) => c.dataset.id === s.id);
+      const btn = card ? card.querySelector('.dl') : null;
+      const res = await downloadOne(s, btn, { keepPanel: true });
+      if (res && res.ok) ok += 1; else bad += 1;
+      updateBatchBar();
+    }
+    dlRefreshStatus();
+    dlConsoleSub.textContent = `完成 ${ok} · 失败 ${bad} · 共 ${songs.length}`;
+    setStatus(`批量下载结束：成功 ${ok} / ${songs.length}`, bad ? 'warn' : 'ok');
   }
 
   /* ---------- 初始化 ---------- */

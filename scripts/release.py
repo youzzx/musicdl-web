@@ -126,6 +126,8 @@ def main():
     ap.add_argument("--no-build", action="store_true")
     ap.add_argument("--dry-run", action="store_true")
     ap.add_argument("--force", action="store_true", help="没有改动也照常升版本发布")
+    ap.add_argument("--tag-name", default=None,
+                    help="标签名（默认 v<版本>；beta 阶段可传 beta1 / beta2）")
     args = ap.parse_args()
 
     old = read_version()
@@ -153,8 +155,12 @@ def main():
     print("已提交：%s" % msg)
 
     # 3) 推送
+    tag = args.tag_name or ("v%s" % new)
     if args.no_push:
-        print("跳过推送（--no-push）")
+        # beta 阶段：只留本地提交与本地 tag，GitHub 保持不动
+        run([GIT, "tag", "-d", tag], check=False)
+        git("tag", "-a", tag, "-m", "MusicDL Web %s" % tag)
+        print("跳过推送（--no-push），已创建本地 tag %s" % tag)
     else:
         if not args.token:
             raise SystemExit("缺少 GITHUB_TOKEN（或 --token），推不了")
@@ -163,7 +169,6 @@ def main():
         if out.returncode != 0:
             raise SystemExit("推送失败（网络？）——本地提交已保留，稍后重试即可")
         # 4) 打 tag 并推送
-        tag = "v%s" % new
         run([GIT, "tag", "-d", tag], check=False)
         git("tag", "-a", tag, "-m", "MusicDL Web %s" % tag)
         out = run([GIT, "push", url, "refs/tags/%s" % tag], check=False)
