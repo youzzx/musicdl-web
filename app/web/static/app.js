@@ -1767,6 +1767,9 @@
   /* 单条下载：先查重（有重复弹确认框），再走流式下载；返回 {ok, saved, error, skipped} */
   async function downloadWithDuplicateCheck(songs, btn) {
     try {
+      /* 面板只重置一次，且必须在查重之前：
+         否则查重写进日志的「重复检测 N 首 / 跳过重复 xxx」会被重置冲掉。 */
+      dlResetBatch();
       const { proceed, skipped } = await resolveDuplicates(songs);
       if (!proceed) return { ok: false, cancelled: true, saved: null, error: '', skipped: 0 };
       if (!proceed.length) {
@@ -1774,10 +1777,11 @@
         return { ok: false, saved: null, error: '', skipped };
       }
       if (songs.length === 1) {
-        const res = await downloadOne(proceed[0], btn || null);
+        /* keepPanel：面板刚重置过，别再清一次（会连同查重日志一起清掉） */
+        const res = await downloadOne(proceed[0], btn || null, { keepPanel: true });
         return { ...res, skipped };
       }
-      const stats = await downloadBatch(proceed);
+      const stats = await downloadBatch(proceed, { keepPanel: true });
       return { ok: true, saved: null, error: '', skipped, stats };
     } catch (err) {
       /* 任何意外都别静默：写进状态栏与下载面板，避免「点了没反应」 */
@@ -1789,10 +1793,10 @@
   }
 
   /* 批量下载：串行执行，避免并发抢带宽与面板错乱；每条各自更新队列行 */
-  async function downloadBatch(list) {
+  async function downloadBatch(list, opts = {}) {
     const songs = (list || []).filter((s) => s && s.id);
     if (!songs.length) return;
-    dlResetBatch();
+    if (!opts.keepPanel) dlResetBatch();
     songs.forEach((s) => {
       dlTasks.push({
         id: s.id,
