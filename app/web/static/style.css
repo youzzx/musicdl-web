@@ -1514,7 +1514,7 @@ button.dock-circle:active {
 .dl-panel-body {
   font-size: 12.5px;
   line-height: 1.6;
-  max-height: 260px;
+  max-height: 320px;
   overflow-y: auto;
   /* 滚动条留出固定位置，日志变长/变短时文字不会左右跳 */
   scrollbar-gutter: stable;
@@ -1756,9 +1756,10 @@ button.dock-circle:active {
 .dlq-row[data-status="done"] .dlq-fill { background: #34c759; }
 .dlq-row[data-status="fail"] .dlq-fill { background: #ff3b30; }
 
-/* 折叠的原始日志：排查时才展开，不挤占正常阅读空间 */
+/* 折叠的原始日志：默认展开，点「日志」可收起 */
 .dl-raw {
-  max-height: 150px;
+  max-height: 180px;
+  min-height: 46px;
   overflow-y: auto;
   font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
   font-size: 11.5px;
@@ -1768,6 +1769,8 @@ button.dock-circle:active {
   padding-top: 7px;
 }
 .dl-raw[hidden] { display: none; }
+/* 还没有任何日志时不占位置，避免一条空的分隔线 */
+.dl-raw:empty { display: none; }
 .dl-raw .log-line { color: rgba(20, 20, 24, 0.7); animation: none; }
 .dl-raw .log-line .t { margin-right: 7px; color: rgba(20, 20, 24, 0.42); }
 

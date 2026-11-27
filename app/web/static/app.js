@@ -1077,13 +1077,12 @@
     dlLogToggle.classList.toggle('on', open);
     if (open) dlRawLog.scrollTop = dlRawLog.scrollHeight;
   });
-
   function setDlConsoleRing(pct) {
     const p = Math.max(0, Math.min(100, Number(pct) || 0));
     dlRingFg.style.strokeDashoffset = String(100 - p);   // 周长按 100 设计
   }
 
-  /* 原始日志：逐行 append，自动滚到底。默认折叠，需要排查时才展开 */
+  /* 原始日志：逐行 append，自动滚到底。默认展开（不点「日志」也看得到过程） */
   function dlLog(text, cls) {
     const row = document.createElement('div');
     row.className = 'log-line' + (cls ? ' ' + cls : '');
@@ -1104,9 +1103,10 @@
     dlTaskCard.hidden = true;
     dlTaskCard.innerHTML = '';
     dlRawLog.innerHTML = '';
-    dlRawLog.hidden = true;
-    dlLogToggle.classList.remove('on');
-    dlLogToggle.setAttribute('aria-expanded', 'false');
+    /* 新一批开始时日志保持展开：默认就能看到过程，需要时才点「日志」收起 */
+    dlRawLog.hidden = false;
+    dlLogToggle.classList.add('on');
+    dlLogToggle.setAttribute('aria-expanded', 'true');
     dlConsoleBody.scrollTop = 0;
     dlConsole.classList.add('show');     // 有下载时才出现在坞里
     setDlOpen(true);                     // 默认展开，方便直接看到过程
